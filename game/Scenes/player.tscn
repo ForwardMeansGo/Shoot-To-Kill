@@ -1,0 +1,33 @@
+[gd_scene load_steps=6 format=3 uid="uid://bfwdbdyqwvha"]
+
+[ext_resource type="Script" uid="uid://drjjsaa5rp213" path="res://Scripts/player.gd" id="1_cvnsp"]
+[ext_resource type="PackedScene" uid="uid://duh7q7p0edxka" path="res://Scenes/gun.tscn" id="2_cvnsp"]
+[ext_resource type="Texture2D" uid="uid://c7gh7ssfwi2jv" path="res://Assets/Player/Demo Guy.png" id="2_vgqql"]
+[ext_resource type="Script" uid="uid://pyeik4e8yata" path="res://Scripts/camera_2d.gd" id="3_6t5aa"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_v0iea"]
+size = Vector2(10, 17.3679)
+
+[node name="Player" type="CharacterBody2D" groups=["Player"]]
+collision_mask = 2
+script = ExtResource("1_cvnsp")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture = ExtResource("2_vgqql")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, 3.0108802)
+scale = Vector2(1, 2.3043523)
+shape = SubResource("RectangleShape2D_v0iea")
+
+[node name="WeaponHolder" type="Node2D" parent="."]
+position = Vector2(6, -1)
+
+[node name="Gun" parent="WeaponHolder" instance=ExtResource("2_cvnsp")]
+position = Vector2(4, -3)
+
+[node name="Camera2D" type="Camera2D" parent="."]
+zoom = Vector2(4, 4)
+process_callback = 0
+position_smoothing_enabled = true
+script = ExtResource("3_6t5aa")
