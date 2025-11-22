@@ -140,24 +140,24 @@
 ## Collision Setup
 
 Layers:
-1 – Player
-2 – World
-3 – PlayerBullets
-4 – Enemies
+1 – world
+2 – player
+3 – enemy
+4 – bullet
 
 Player:
-- Layer: 1
-- Mask: 2, 4
+- Layer: 2
+- Mask: 1, 3
 
 World (TileMap / ground):
-- Layer: 2
-- Mask: 1, 3, 4
+- Layer: 1
+- Mask: 2, 3, 4
 
 Enemy:
-- Layer: 4
-- Mask: 2, 3
+- Layer: 3
+- Mask: 1, 2, 4
 
 Bullet:
-- Layer: 3
-- Mask: 2, 4
+- Layer: 4
+- Mask: 1, 3
 

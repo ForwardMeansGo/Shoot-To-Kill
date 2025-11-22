@@ -9,8 +9,8 @@
 size = Vector2(16, 39)
 
 [node name="Enemy" type="CharacterBody2D" groups=["enemies"]]
-collision_layer = 8
-collision_mask = 6
+collision_layer = 4
+collision_mask = 11
 script = ExtResource("1_hghv2")
 
 [node name="Sprite2D" type="Sprite2D" parent="."]

@@ -16,15 +16,15 @@ texture_region_size = Vector2i(32, 32)
 
 [sub_resource type="TileSet" id="TileSet_s7ctl"]
 tile_size = Vector2i(32, 32)
-physics_layer_0/collision_layer = 2
-physics_layer_0/collision_mask = 5
+physics_layer_0/collision_layer = 1
+physics_layer_0/collision_mask = 14
 sources/1 = SubResource("TileSetAtlasSource_pkws4")
 
 [node name="Level01" type="Node2D"]
 
 [node name="Player" parent="." instance=ExtResource("1_f6slu")]
 position = Vector2(109, -25)
-collision_mask = 10
+collision_mask = 13
 
 [node name="Terrain" type="TileMapLayer" parent="."]
 position = Vector2(62, 1)

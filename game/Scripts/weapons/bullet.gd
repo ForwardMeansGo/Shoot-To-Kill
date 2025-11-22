@@ -5,24 +5,37 @@ extends Area2D
 @export var lifetime: float = 1.5
 @export var damage: int = 10
 
+var previous_position: Vector2
+
+func _ready() -> void:
+	previous_position = global_position
+
 func _physics_process(delta: float) -> void:
+	# Handle lifetime first
 	lifetime -= delta
 	if lifetime <= 0.0:
 		queue_free()
 		return
 
 	if direction == Vector2.ZERO:
+		previous_position = global_position
 		return
 
 	rotation = direction.angle()
 
-	var from: Vector2 = global_position
-	var to: Vector2 = from + direction * speed * delta
+	# Get current position and compute target position
+	var current_pos: Vector2 = global_position
+	var target_pos: Vector2 = current_pos + direction * speed * delta
+	
+	# Add a small extra margin in the same direction to be safe
+	var ray_to: Vector2 = target_pos + direction * 2.0
 
+	# Create raycast query from previous_position to ray_to
 	var space_state: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
-	var query: PhysicsRayQueryParameters2D = PhysicsRayQueryParameters2D.create(from, to)
+	var query: PhysicsRayQueryParameters2D = PhysicsRayQueryParameters2D.create(previous_position, ray_to)
 	query.collision_mask = collision_mask
 	query.exclude = [self]
+	query.hit_from_inside = true
 
 	var result: Dictionary = space_state.intersect_ray(query)
 
@@ -36,8 +49,11 @@ func _physics_process(delta: float) -> void:
 		queue_free()
 		return
 
-	# No hit – just move normally
-	global_position = to
+	# No hit – move normally to target position
+	global_position = target_pos
+	
+	# Update previous_position for next frame
+	previous_position = global_position
 
 func _handle_hit(body: Object) -> void:
 	if body is Node:
