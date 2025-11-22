@@ -38,11 +38,11 @@
 ## Bullet System
 
 - Scene: `Bullet.tscn`
-- Script: `bullet.gd`
+- Script: `bullet.gd` (located in `scripts/weapons/bullet.gd`)
 - Movement:
   - Uses raycast logic each physics frame:
     - Computes `from` (current position) and `to` (intended new position).
-    - Calls `intersect_ray` with the bullet’s `collision_mask`.
+    - Calls `intersect_ray` with the bullet's `collision_mask`.
     - If hit:
       - Moves to hit position.
       - Calls `_handle_hit(collider)`.
@@ -50,6 +50,7 @@
     - If no hit:
       - Moves to `to` normally.
 - Damage:
+  - `damage` exported variable (currently set to 10).
   - `_handle_hit`:
     - Ignores nodes in `"player"` group.
     - If node is in `"enemy"` group and has `take_damage`, calls it with `damage`.
@@ -69,12 +70,19 @@
 - Visuals:
   - `Sprite2D.flip_h` based on direction (left/right).
 - Health:
-  - `max_health` exported; `current_health` initialised in `_ready`.
+  - `max_health` exported (currently 100); `current_health` initialised in `_ready`.
   - `take_damage(amount)`:
     - Reduces `current_health`.
     - Calls `flash_hit` for brief red flash feedback.
+    - Calls `_update_health_bar()` to update the visual health bar.
     - Calls `die()` when health <= 0.
   - `die()` currently just `queue_free()`.
+- Health Bar:
+  - Child node `HealthBar` (TextureProgressBar) cached via `@onready var health_bar`.
+  - `_update_health_bar()` function:
+    - Sets `health_bar.max_value = max_health`.
+    - Sets `health_bar.value = current_health`.
+    - Called in `_ready()` to initialize and in `take_damage()` to update.
 - Groups:
   - Enemy adds itself to `"enemy"` group for bullet detection.
 

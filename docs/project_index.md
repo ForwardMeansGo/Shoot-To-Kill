@@ -51,7 +51,7 @@ Current dev focus: **core combat loop** – player, gun, bullets, killable enemi
 
 ### Bullets
 - Scene: `Bullet.tscn`
-- Script: `bullet.gd`
+- Script: `bullet.gd` (located in `scripts/weapons/bullet.gd`)
 - Behaviour:
   - Uses raycast-based movement each physics frame to avoid visible clipping through ground/enemies
   - Moves from `from` → `to` and checks `intersect_ray`
@@ -59,24 +59,29 @@ Current dev focus: **core combat loop** – player, gun, bullets, killable enemi
     - Moves to exact hit position
     - Damages enemies in `"enemy"` group (if they have `take_damage`)
     - `queue_free` after hit
-  - Has `speed`, `direction`, `lifetime`, `damage`
+  - Has `speed`, `direction`, `lifetime`, `damage` (currently 10 damage per bullet)
   - Auto-despawns when `lifetime` reaches 0
 
 ### Enemies
-- Scene: `EnemyBasic.tscn`
-- Script: `enemy_basic.gd`
+- Scene: `EnemyBasic.tscn` (or `enemy.tscn`)
+- Script: `enemy.gd` (located in `scripts/enemies/enemy.gd`)
 - Behaviour:
   - `CharacterBody2D` with gravity
   - Moves horizontally towards the **assigned** `player` export (currently set manually in the editor)
   - Uses `move_speed` (currently 45.0)
   - Flips `Sprite2D` based on movement direction
 - Health:
-  - `max_health` exported; `current_health` initialised in `_ready`
+  - `max_health` exported (currently 100); `current_health` initialised in `_ready`
   - `take_damage(amount)`:
     - Reduces health
     - Calls `flash_hit` (brief red tint using `modulate`)
+    - Updates health bar via `_update_health_bar()`
     - Calls `die` when health <= 0
   - `die()` currently just `queue_free()`
+- Health Bar:
+  - Child node `HealthBar` (TextureProgressBar) cached in `@onready var health_bar`
+  - `_update_health_bar()` function sets `max_value` and `value` based on current health
+  - Automatically updates when enemy takes damage
 - Group:
   - Adds itself to `"enemy"` group in `_ready` so bullets can recognise it
 
@@ -107,10 +112,11 @@ Current dev focus: **core combat loop** – player, gun, bullets, killable enemi
   - `Muzzle` (`Marker2D`)
   - `GunAudio` (`AudioStreamPlayer2D` with pistol shot sound)
 
-### `EnemyBasic.tscn`
-- Root: `EnemyBasic` (`CharacterBody2D`)
+### `EnemyBasic.tscn` / `enemy.tscn`
+- Root: `EnemyBasic` / `Enemy` (`CharacterBody2D`)
   - `Sprite2D`
   - `CollisionShape2D`
+  - `HealthBar` (`TextureProgressBar`) - displays enemy health
 
 ### `Bullet.tscn`
 - Root: `Bullet` (`Area2D`)
@@ -149,20 +155,25 @@ Current dev focus: **core combat loop** – player, gun, bullets, killable enemi
 - Extends WeaponBase
 - Semi-auto behaviour in `try_shoot` (no cooldown, one shot whenever called)
 
-### `scripts/bullet.gd`
+### `scripts/weapons/bullet.gd`
 - Raycast movement
-- Damage on hit
+- Damage on hit (currently 10 damage per bullet)
 - Lifetime countdown
 - No visible clipping due to raycast hit placement
 
-### `scripts/enemies/enemy_basic.gd`
+### `scripts/enemies/enemy.gd`
 - Simple follow AI:
   - Moves horizontally toward assigned `player`
   - Applies gravity
 - Health & death:
-  - Takes damage from bullets
-  - Flashes red briefly
-  - Dies via `queue_free`
+  - `max_health` = 100 (exported, configurable)
+  - Takes damage from bullets (10 damage per bullet)
+  - Flashes red briefly on hit
+  - Updates health bar when damaged
+  - Dies via `queue_free` when health <= 0
+- Health Bar:
+  - `_update_health_bar()` updates the `HealthBar` TextureProgressBar
+  - Called in `_ready()` and `take_damage()`
 
 ### `scripts/camera_2d.gd`
 - Handles camera shake:
@@ -178,7 +189,7 @@ Current dev focus: **core combat loop** – player, gun, bullets, killable enemi
   - Improvement planned: auto-find player via group (`"player"`) instead of manual wiring.
 - No player HP or damage system yet.
 - No enemy attack behaviour yet (they only walk toward you).
-- No UI elements (health bar, ammo, crosshair) yet.
+- Enemy health bars implemented (TextureProgressBar), but no player health bar, ammo counter, or crosshair yet.
 - Movement is basic (no dash, roll, wall slide, etc.) — all planned for later.
 
 ---
