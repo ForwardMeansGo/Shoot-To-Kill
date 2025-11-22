@@ -2,16 +2,18 @@ extends CharacterBody2D
 
 @export var move_speed: float = 45.0
 @export var gravity: float = 1200.0
-@export var max_health: int = 10
+@export var max_health: int = 100
 @export var player: CharacterBody2D
 
 @onready var sprite: Sprite2D = $Sprite2D
+@onready var health_bar: TextureProgressBar = $HealthBar
 
 var current_health: int
 
 func _ready() -> void:
 	current_health = max_health
 	add_to_group("enemy") # so bullets can recognise this as an enemy
+	_update_health_bar()
 
 func _physics_process(delta: float) -> void:
 	# Gravity
@@ -37,6 +39,7 @@ func _physics_process(delta: float) -> void:
 func take_damage(amount: int) -> void:
 	current_health -= amount
 	flash_hit()
+	_update_health_bar()
 
 	if current_health <= 0:
 		die()
@@ -46,6 +49,11 @@ func flash_hit() -> void:
 	sprite.modulate = Color(1, 0.4, 0.4)
 	await get_tree().create_timer(0.05).timeout
 	sprite.modulate = Color(1, 1, 1)
+
+func _update_health_bar() -> void:
+	if health_bar != null:
+		health_bar.max_value = max_health
+		health_bar.value = current_health
 
 func die() -> void:
 	# Later: play death animation, spawn particles, drop loot etc.
