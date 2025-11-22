@@ -136,3 +136,28 @@
     - Randomises `pitch_scale` slightly.
     - Plays it, then auto-frees it on `finished`.
 - Allows overlapping gunshots without cutting off previous sounds.
+
+## Collision Setup
+
+Layers:
+1 – Player
+2 – World
+3 – PlayerBullets
+4 – Enemies
+
+Player:
+- Layer: 1
+- Mask: 2, 4
+
+World (TileMap / ground):
+- Layer: 2
+- Mask: 1, 3, 4
+
+Enemy:
+- Layer: 4
+- Mask: 2, 3
+
+Bullet:
+- Layer: 3
+- Mask: 2, 4
+
