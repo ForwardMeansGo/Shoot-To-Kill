@@ -1,8 +1,8 @@
 [gd_scene load_steps=4 format=3 uid="uid://duh7q7p0edxka"]
 
 [ext_resource type="Script" uid="uid://dakluwdougot" path="res://Scripts/weapons/weapon_pistol.gd" id="1_oqrbh"]
-[ext_resource type="Texture2D" uid="uid://bnn5y40e613ni" path="res://Assets/Guns/Demo Pistol.png" id="2_oqrbh"]
-[ext_resource type="AudioStream" uid="uid://o1ijkdn5pgfi" path="res://Assets/Sounds/Pistol Sound effect(1).mp3" id="3_t6ynv"]
+[ext_resource type="Texture2D" uid="uid://c58pkbd1o0ymd" path="res://Assets/Sprites/Guns/Demo Pistol.png" id="2_t6ynv"]
+[ext_resource type="AudioStream" uid="uid://dne8kvkrh7lsv" path="res://Assets/Sounds/pistol_shot.mp3" id="3_t6ynv"]
 
 [node name="Gun" type="Node2D"]
 script = ExtResource("1_oqrbh")
@@ -11,7 +11,7 @@ script = ExtResource("1_oqrbh")
 position = Vector2(8, 0)
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
-texture = ExtResource("2_oqrbh")
+texture = ExtResource("2_t6ynv")
 
 [node name="GunAudio" type="AudioStreamPlayer2D" parent="."]
 stream = ExtResource("3_t6ynv")

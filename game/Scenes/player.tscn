@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://drjjsaa5rp213" path="res://Scripts/player.gd" id="1_cvnsp"]
 [ext_resource type="PackedScene" uid="uid://duh7q7p0edxka" path="res://Scenes/gun.tscn" id="2_cvnsp"]
-[ext_resource type="Texture2D" uid="uid://c7gh7ssfwi2jv" path="res://Assets/Player/Demo Guy.png" id="2_vgqql"]
+[ext_resource type="Texture2D" uid="uid://p7ilwy7yta6b" path="res://Assets/Sprites/Player/Demo Guy.png" id="2_vgqql"]
 [ext_resource type="Script" uid="uid://pyeik4e8yata" path="res://Scripts/camera_2d.gd" id="3_6t5aa"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_v0iea"]
