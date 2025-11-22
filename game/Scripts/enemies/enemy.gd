@@ -4,6 +4,7 @@ extends CharacterBody2D
 @export var gravity: float = 1200.0
 @export var max_health: int = 100
 @export var player: CharacterBody2D
+@export var damage_number_scene: PackedScene
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var health_bar: TextureProgressBar = $HealthBar
@@ -40,6 +41,13 @@ func take_damage(amount: int) -> void:
 	current_health -= amount
 	flash_hit()
 	_update_health_bar()
+	
+	# Spawn damage number if scene is set
+	if damage_number_scene != null:
+		var dmg = damage_number_scene.instantiate()
+		dmg.global_position = global_position + Vector2(15, -10)
+		dmg.damage = amount
+		get_tree().current_scene.add_child(dmg)
 
 	if current_health <= 0:
 		die()
