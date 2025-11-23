@@ -4,6 +4,7 @@ extends Node2D
 @export var lifetime: float = 0.3
 @export var float_distance: float = 30.0
 @export var arc_distance: float = 20.0
+@export var is_crit: bool = false
 
 @onready var label: RichTextLabel = $Label
 
@@ -14,6 +15,12 @@ var direction_sign: float
 func _ready() -> void:
 	# Set the label text to the damage value
 	label.text = str(damage)
+	
+	# Apply crit styling if this is a crit
+	if is_crit:
+		# Make crit numbers stand out
+		scale = Vector2(1.2, 1.2)
+		label.modulate = Color(1.0, 0.9, 0.2)  # a yellowish tone
 	
 	# Apply a very small random horizontal offset
 	var random_x_offset: float = randf_range(-2.0, 2.0)

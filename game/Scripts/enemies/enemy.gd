@@ -37,7 +37,7 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
-func take_damage(amount: int) -> void:
+func take_damage(amount: int, is_crit: bool = false) -> void:
 	current_health -= amount
 	flash_hit()
 	_update_health_bar()
@@ -46,7 +46,10 @@ func take_damage(amount: int) -> void:
 	if damage_number_scene != null:
 		var dmg = damage_number_scene.instantiate()
 		dmg.global_position = global_position + Vector2(15, -10)
-		dmg.damage = amount
+		if "damage" in dmg:
+			dmg.damage = amount
+		if "is_crit" in dmg:
+			dmg.is_crit = is_crit
 		get_tree().current_scene.add_child(dmg)
 
 	if current_health <= 0:

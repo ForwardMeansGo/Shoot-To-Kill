@@ -6,6 +6,7 @@ extends Area2D
 @export var damage: int = 10
 
 var previous_position: Vector2
+var is_crit: bool = false
 
 func _ready() -> void:
 	previous_position = global_position
@@ -65,4 +66,4 @@ func _handle_hit(body: Object) -> void:
 
 		# Damage enemies
 		if node.is_in_group("enemy") and node.has_method("take_damage"):
-			node.take_damage(damage)
+			node.take_damage(damage, is_crit)

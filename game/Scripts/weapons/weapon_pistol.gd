@@ -1,4 +1,4 @@
-extends "res://scripts/weapons/weapon_base.gd"
+extends WeaponBase
 
 func try_shoot(target_global_pos: Vector2) -> bool:
 	# Semi-auto pistol, no internal cooldown
