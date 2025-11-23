@@ -27,7 +27,7 @@ func _physics_process(delta: float) -> void:
 	# Get current position and compute target position
 	var current_pos: Vector2 = global_position
 	var target_pos: Vector2 = current_pos + direction * speed * delta
-	
+
 	# Add a small extra margin in the same direction to be safe
 	var ray_to: Vector2 = target_pos + direction * 2.0
 

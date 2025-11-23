@@ -5,18 +5,34 @@ extends CharacterBody2D
 @export var max_health: int = 100
 @export var player: CharacterBody2D
 @export var damage_number_scene: PackedScene
+@export var contact_damage: int = 10
+@export var contact_cooldown: float = 0.5
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var health_bar: TextureProgressBar = $HealthBar
 
 var current_health: int
+var contact_timer: float = 0.0
 
 func _ready() -> void:
 	current_health = max_health
 	add_to_group("enemy") # so bullets can recognise this as an enemy
 	_update_health_bar()
+	
+	# Connect DamageArea safely
+	if has_node("DamageArea"):
+		var da: Area2D = $DamageArea
+		if not da.body_entered.is_connected(_on_damage_area_body_entered):
+			da.body_entered.connect(_on_damage_area_body_entered)
+			print("DamageArea connected for ", name)
 
 func _physics_process(delta: float) -> void:
+	# Update contact timer
+	if contact_timer > 0.0:
+		contact_timer -= delta
+		if contact_timer < 0.0:
+			contact_timer = 0.0
+	
 	# Gravity
 	if not is_on_floor():
 		velocity.y += gravity * delta
@@ -65,6 +81,23 @@ func _update_health_bar() -> void:
 	if health_bar != null:
 		health_bar.max_value = max_health
 		health_bar.value = current_health
+
+func _on_damage_area_body_entered(body: Node) -> void:
+	print("DamageArea entered by: ", body, " name=", body.name, " groups=", body.get_groups())
+	
+	if contact_timer > 0.0:
+		return
+	
+	var target := body
+	
+	# if the collider isn't in the player group but their parent is, use parent
+	if not target.is_in_group("player") and target.get_parent() and target.get_parent().is_in_group("player"):
+		target = target.get_parent()
+	
+	if target.is_in_group("player") and target.has_method("take_damage"):
+		print("Dealing contact damage to: ", target.name)
+		target.take_damage(contact_damage)
+		contact_timer = contact_cooldown
 
 func die() -> void:
 	# Later: play death animation, spawn particles, drop loot etc.

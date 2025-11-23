@@ -1,208 +1,192 @@
-# Shoot To Kill — Project Index
+# Shoot To Kill — Project Index (Updated)
 
 ## High-Level Summary
-
 2D side-scrolling shooter built in Godot 4.
 
-Core ideas:
-- Advanced movement (later: roll, dash, mantling, etc.)
-- Gun-focused combat with different weapon types
-- Modular, reusable scenes (Player, Weapon, Bullet, Enemy)
-- Coop planned for the future, but not implemented yet.
+Core gameplay pillars:
+- Clean & responsive movement
+- Modular weapon system
+- Reliable bullets with continuous collision detection
+- Damage ranges + crit system
+- Floating damage numbers with smooth arcing motion
+- Enemies with full health logic and damage feedback
+- Camera shake + gun audio
 
-Current dev focus: **core combat loop** – player, gun, bullets, killable enemies, juice (camera shake, sound).
-
----
-
-## Implemented Features (Gameplay)
-
-### Player
-- Movement:
-  - Left / right movement
-  - Jump
-  - Gravity
-- Gun aiming:
-  - Gun rotates to face mouse using `look_at`
-  - Gun flips correctly when aiming left vs right
-  - Gun holder moves to left/right side of player sprite so it looks like the character turned around
-- Shooting:
-  - Pistol fires **once per mouse click** (semi-auto only)
-  - No rate limit beyond how fast you can click
-- Camera:
-  - `Camera2D` with `camera_2d.gd` script
-  - Camera shake triggered by weapon via signal
-
-### Weapons (Modular System)
-- All weapons live under `scripts/weapons/`
-- **WeaponBase (`weapon_base.gd`):**
-  - Exports:
-    - `bullet_scene` (defaults to Bullet.tscn)
-    - `shake_strength`, `shake_duration`
-  - Handles:
-    - Flipping weapon sprite vertically when facing left (`set_facing_left`)
-    - Aiming at mouse (`aim_at`)
-    - Spawning bullets at the `Muzzle` position (`spawn_bullet`)
-    - Playing gunshot sound using a one-shot `AudioStreamPlayer2D`
-    - Emitting `fired(shake_strength, shake_duration)` signal on each shot
-- **Pistol (`weapon_pistol.gd`):**
-  - Extends WeaponBase
-  - `try_shoot(target_pos)` calls `spawn_bullet(target_pos)` directly
-  - No fire-rate or cooldown – fully semi-auto, driven by `Input.is_action_just_pressed("shoot")` in `player.gd`
-
-### Bullets
-- Scene: `Bullet.tscn`
-- Script: `bullet.gd` (located in `scripts/weapons/bullet.gd`)
-- Behaviour:
-  - Uses raycast-based movement each physics frame to avoid visible clipping through ground/enemies
-  - Moves from `from` → `to` and checks `intersect_ray`
-  - On hit:
-    - Moves to exact hit position
-    - Damages enemies in `"enemy"` group (if they have `take_damage`)
-    - `queue_free` after hit
-  - Has `speed`, `direction`, `lifetime`, `damage` (currently 10 damage per bullet)
-  - Auto-despawns when `lifetime` reaches 0
-
-### Enemies
-- Scene: `EnemyBasic.tscn` (or `enemy.tscn`)
-- Script: `enemy.gd` (located in `scripts/enemies/enemy.gd`)
-- Behaviour:
-  - `CharacterBody2D` with gravity
-  - Moves horizontally towards the **assigned** `player` export (currently set manually in the editor)
-  - Uses `move_speed` (currently 45.0)
-  - Flips `Sprite2D` based on movement direction
-- Health:
-  - `max_health` exported (currently 100); `current_health` initialised in `_ready`
-  - `take_damage(amount)`:
-    - Reduces health
-    - Calls `flash_hit` (brief red tint using `modulate`)
-    - Updates health bar via `_update_health_bar()`
-    - Calls `die` when health <= 0
-  - `die()` currently just `queue_free()`
-- Health Bar:
-  - Child node `HealthBar` (TextureProgressBar) cached in `@onready var health_bar`
-  - `_update_health_bar()` function sets `max_value` and `value` based on current health
-  - Automatically updates when enemy takes damage
-- Group:
-  - Adds itself to `"enemy"` group in `_ready` so bullets can recognise it
+Current dev focus: **Combat polish + enemy interactions**
 
 ---
 
-## Scene + Node Overview
+## Player
+### Movement
+- Horizontal left/right movement.
+- Jumping.
+- Gravity system.
+- Uses `move_and_slide`.
 
-### `Level_01.tscn`
-- Holds the main level layout (TileMap/ground etc.)
-- Contains:
-  - `Player` instance
-  - One or more `EnemyBasic` instances
-  - Other world nodes as needed
+### Gun Aiming & Facing
+- Gun rotates using `look_at(mouse_pos)`.
+- Weapon flips vertically using `set_facing_left()`.
+- Player sprite flips horizontally using sprite scale.
+- Weapon holder position shifts left/right depending on mouse direction.
 
-### `Player.tscn`
-- Root: `Player` (`CharacterBody2D`)
-  - `Sprite2D`
-  - `WeaponHolder` (`Node2D`)
-    - `Gun` (`Node2D`)
-      - `Sprite2D`
-      - `Muzzle` (`Marker2D`)
-      - `GunAudio` (`AudioStreamPlayer2D`)
-  - `Camera2D` (with `camera_2d.gd`)
+### Shooting
+- Driven from `player.gd`.
+- Pistol fires with `Input.is_action_just_pressed("shoot")`.
+- Semi-auto: 1 bullet per click.
+- Calls `gun.try_shoot(mouse_pos)`.
 
-### `Gun.tscn`
-- Root: `Gun` (`Node2D`, script: `weapon_pistol.gd`)
-  - `Sprite2D`
-  - `Muzzle` (`Marker2D`)
-  - `GunAudio` (`AudioStreamPlayer2D` with pistol shot sound)
-
-### `EnemyBasic.tscn` / `enemy.tscn`
-- Root: `EnemyBasic` / `Enemy` (`CharacterBody2D`)
-  - `Sprite2D`
-  - `CollisionShape2D`
-  - `HealthBar` (`TextureProgressBar`) - displays enemy health
-
-### `Bullet.tscn`
-- Root: `Bullet` (`Area2D`)
-  - `CollisionShape2D`
+### Camera
+- `Camera2D` with shake system.
+- Weapon emits a `fired` signal → Player forwards to camera.
 
 ---
 
-## Script Overview (Quick Reference)
-
-### `scripts/player.gd`
-- Movement (walk, jump, gravity)
-- Aiming:
-  - Gets mouse position via `get_global_mouse_position()`
-  - Calls `gun.aim_at(mouse_pos)`
-- Facing logic:
-  - Computes `facing_left` based on `mouse_pos.x < global_position.x`
-  - Flips `Sprite2D` horizontally for body
-  - Moves `WeaponHolder.position.x` to left or right side using a stored base offset
-- Weapon integration:
-  - Calls `gun.set_facing_left(facing_left)` if method exists
-  - On `Input.is_action_just_pressed("shoot")`, calls `gun.try_shoot(mouse_pos)`
-- Camera integration:
-  - Connects to weapon `fired` signal in `_ready`
-  - `_on_weapon_fired(strength, duration)` → calls `cam.start_shake`
-
-### `scripts/weapons/weapon_base.gd`
-- Base class for all hand-held weapons
-- Manages:
-  - Flipping sprite when facing left (`sprite.flip_v`)
-  - Aiming at target (`look_at`)
-  - Spawning bullets at `Muzzle`
-  - Playing shot sound via temporary `AudioStreamPlayer2D` instances
+## Weapons (Modular System)
+### WeaponBase (`weapon_base.gd`)
+- **Exports**
+  - `base_damage_min` / `base_damage_max`
+  - `crit_chance`
+  - `crit_multiplier`
+  - `shake_strength`, `shake_duration`
+  - `bullet_scene`
+- **Handles**
+  - Aiming + flipping
+  - Damage rolling:
+    - Random damage in `[base_damage_min, base_damage_max]`
+    - Crit roll (`randf() < crit_chance`)
+    - Crit damage multiplied by `crit_multiplier`
+  - Spawning bullets (`Bullet.tscn`)
+  - Passing damage + crit info to bullets
   - Emitting `fired` signal for camera shake
+  - Playing one-shot gun audio with random pitch
 
-### `scripts/weapons/weapon_pistol.gd`
-- Extends WeaponBase
-- Semi-auto behaviour in `try_shoot` (no cooldown, one shot whenever called)
-
-### `scripts/weapons/bullet.gd`
-- Raycast movement
-- Damage on hit (currently 10 damage per bullet)
-- Lifetime countdown
-- No visible clipping due to raycast hit placement
-
-### `scripts/enemies/enemy.gd`
-- Simple follow AI:
-  - Moves horizontally toward assigned `player`
-  - Applies gravity
-- Health & death:
-  - `max_health` = 100 (exported, configurable)
-  - Takes damage from bullets (10 damage per bullet)
-  - Flashes red briefly on hit
-  - Updates health bar when damaged
-  - Dies via `queue_free` when health <= 0
-- Health Bar:
-  - `_update_health_bar()` updates the `HealthBar` TextureProgressBar
-  - Called in `_ready()` and `take_damage()`
-
-### `scripts/camera_2d.gd`
-- Handles camera shake:
-  - `start_shake(strength, duration)`
-  - Uses `_process` to apply falloff jitter
+### Pistol
+- Extends WeaponBase.
+- No cooldown — fires every click.
+- Default damage: **8–12**, with crit chance (default 10%).
 
 ---
 
-## Known Quirks / Current Limitations
+## Bullet System (`bullet.gd`)
+- **Continuous Collision Detection**
+  - Prevents tunnelling at high speeds.
+  - Tracks `previous_position` each frame.
+  - Raycast from previous_position → target_pos:
+    - Includes safety margin.
+    - Uses `hit_from_inside = true`.
+  - If ray hits:
+    - Bullet moves to exact hit point.
+    - Calls `_handle_hit(collider)`.
+    - Frees itself.
 
-- Extra enemies in a level:
-  - Only enemies with `player` export set in the Inspector will move.
-  - Improvement planned: auto-find player via group (`"player"`) instead of manual wiring.
-- No player HP or damage system yet.
-- No enemy attack behaviour yet (they only walk toward you).
-- Enemy health bars implemented (TextureProgressBar), but no player health bar, ammo counter, or crosshair yet.
-- Movement is basic (no dash, roll, wall slide, etc.) — all planned for later.
+- **Damage & Crit**
+  - Weapon sets:
+    - `bullet.damage = dmg_value`
+    - `bullet.is_crit = is_crit`
+  - `_handle_hit` passes both to enemy:
+    - `enemy.take_damage(damage, is_crit)`
+
+- **Lifetime**
+  - Bullet has a countdown.
+  - Frees itself when finished.
 
 ---
 
-## How To Use This File With ChatGPT
+## Enemy System (`enemy.gd`)
+### Movement
+- Moves toward exported `player` reference.
+- Applies gravity.
+- Sprite flips depending on direction.
 
-When starting a **new ChatGPT chat** about this project:
+### Health
+- `max_health` exported.
+- `current_health` initialized in `_ready()`.
+- `take_damage(amount, is_crit=false)`:
+  - Reduces health.
+  - Brief red flash (`flash_hit`).
+  - Updates health bar.
+  - Spawns damage number:
+    - Passes `damage` + `is_crit`.
 
-1. Paste **this file (`project_index.md`)** first.
-2. Paste `file_structure.md` after it.
-3. Then paste any specific script(s) you want to work on (e.g. `player.gd`, `weapon_base.gd`).
-4. Explain what you want to add/change.
+### Health Bar
+- Child `TextureProgressBar`.
+- Updated each hit.
 
-This gives ChatGPT enough context to help without needing the old conversation.
+### Damage Numbers
+- Exported `damage_number_scene`.
+- Instantiates on hit.
+- Positioned slightly above enemy.
+- Passes crit info for visuals.
+
+### Group
+- Enemy registers in `"enemy"` group.
 
 ---
+
+## Damage Number System (`damage_number.gd`)
+- Shows floating numbers above enemy.
+- **Exports**
+  - `damage` (int)
+  - `is_crit` (bool)
+  - `lifetime` (~0.3)
+  - `float_distance`, `arc_distance`
+- **Visual**
+  - Normal: white, default size.
+  - Crit:
+    - larger (1.2x)
+    - yellow (1.0, 0.9, 0.2)
+- **Motion**
+  - Parametric arc:
+    - `t` animates from 0 → 0.6
+    - Horizontal drift based on arc_distance.
+    - Vertical curve using `sin(t * PI)`.
+  - Random left or right arc.
+  - Alpha fades to 0.
+- Auto frees when tween ends.
+
+---
+
+## Scenes Overview
+### Level_01.tscn
+- World layout + enemies + player.
+
+### Player.tscn
+- Player root (CharacterBody2D)
+- Weapon holder
+- Gun
+- Camera2D
+- (Player HP bar not yet implemented)
+
+### Gun.tscn
+- Weapon scene with muzzle + audio.
+
+### Bullet.tscn
+- Bullet Area2D + CollisionShape2D.
+
+### EnemyBasic.tscn
+- Enemy root.
+- Health bar.
+- Sprite.
+- Damage number spawn logic.
+
+### DamageNumber.tscn
+- Node2D + RichTextLabel for damage display.
+
+---
+
+## Known Limitations
+- Player HP system not implemented yet.
+- Enemy attack (contact or melee) not implemented yet.
+- Pistol only — no other weapons yet.
+- No reload, ammo, UI.
+- Enemy pathfinding is simple horizontal chase.
+- No knockback for player or enemies yet.
+
+---
+
+## How to Use This File with ChatGPT
+To load this project into a new chat:
+1. Paste `project_index.md` (this file).
+2. Paste `file_structure.md`.
+3. Paste `gameplay_systems.md`.
+4. Paste specific scripts you want help with.

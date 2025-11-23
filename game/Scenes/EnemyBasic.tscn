@@ -1,13 +1,16 @@
-[gd_scene load_steps=7 format=3 uid="uid://b24ka108g6bnw"]
+[gd_scene load_steps=8 format=3 uid="uid://b24ka108g6bnw"]
 
 [ext_resource type="Script" uid="uid://duycd31rxckwt" path="res://Scripts/enemies/enemy.gd" id="1_hghv2"]
 [ext_resource type="Texture2D" uid="uid://d3sxprflqadv8" path="res://Assets/Sprites/Enemy/Demo Enemy.png" id="2_1f0kj"]
 [ext_resource type="PackedScene" uid="uid://deefc1di02kvu" path="res://Scenes/damage_number.tscn" id="2_0830c"]
-[ext_resource type="Texture2D" uid="uid://dsfvqaytjsgf5" path="res://Assets/Sprites/Enemy/Healthbar1Empty.png" id="3_287tu"]
-[ext_resource type="Texture2D" uid="uid://carhoqcpgfk70" path="res://Assets/Sprites/Enemy/Healthbar1Progress.png" id="3_afpow"]
+[ext_resource type="Texture2D" uid="uid://dsfvqaytjsgf5" path="res://Assets/Sprites/Enemy/EnemyHealthbar1Background.png" id="3_287tu"]
+[ext_resource type="Texture2D" uid="uid://ballj2pmtnuag" path="res://Assets/Sprites/Enemy/Healthbar1Progress.png" id="3_afpow"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_1f0kj"]
 size = Vector2(16, 39)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_rfug7"]
+size = Vector2(23, 39)
 
 [node name="Enemy" type="CharacterBody2D" groups=["enemies"]]
 collision_layer = 4
@@ -37,3 +40,7 @@ texture_progress = ExtResource("3_afpow")
 [node name="DamageArea" type="Area2D" parent="."]
 collision_layer = 4
 collision_mask = 2
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="DamageArea"]
+position = Vector2(18.5, 20.5)
+shape = SubResource("RectangleShape2D_rfug7")

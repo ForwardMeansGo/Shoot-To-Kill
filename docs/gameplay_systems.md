@@ -1,163 +1,174 @@
-# Gameplay Systems — Shoot To Kill
+# Gameplay Systems — Shoot To Kill (Updated)
 
 ## Weapons System
 
-### Architecture
-- All weapons are scenes that use scripts under `scripts/weapons/`.
-- Base script: `weapon_base.gd` (extends `Node2D`).
-- Specific weapons (e.g. `weapon_pistol.gd`) extend the base.
+### Core Architecture
+Weapons live under `scripts/weapons/`.
+- Base class: `weapon_base.gd`, `class_name WeaponBase`.
+- Specific weapons (pistol, etc.) extend WeaponBase.
 
-### WeaponBase Responsibilities
-- Rotation:
-  - `aim_at(target_global_pos)` uses `look_at` so weapon points toward mouse.
-- Flipping:
-  - `set_facing_left(is_left)` flips weapon sprite vertically when facing left.
-  - Player decides facing and calls this.
-- Bullet spawn:
-  - `spawn_bullet(target_global_pos)`:
-    - Uses `Muzzle` marker to get spawn position.
-    - Instantiates `Bullet.tscn`.
-    - Sets `direction`, `rotation`, and adds it to the current scene.
-- Camera shake:
-  - Emits `fired(shake_strength, shake_duration)` signal per shot.
-  - Player listens and forwards this to Camera2D.
-- Sound:
-  - Uses `GunAudio` (AudioStreamPlayer2D) as a template.
-  - Spawns a new one-shot `AudioStreamPlayer2D` at the muzzle each shot.
-  - Applies slight random pitch variation for feel.
+### Aiming + Orientation
+- `aim_at(mouse_pos)` rotates weapon towards mouse.
+- `set_facing_left(is_left)` flips weapon sprite via vertical flip.
+- Player handles facing logic.
 
-### Pistol
-- `weapon_pistol.gd`:
-  - Extends WeaponBase.
-  - `try_shoot(target_pos)` simply calls `spawn_bullet(target_pos)` and returns `true`.
-- Semi-auto behaviour:
-  - Player uses `Input.is_action_just_pressed("shoot")`, so holding the mouse does not rapid-fire.
+### Damage System
+- Generic damage + crit logic lives in WeaponBase.
+- Exports:
+  - `base_damage_min` (float)
+  - `base_damage_max` (float)
+  - `crit_chance` (float)
+  - `crit_multiplier` (float)
+- `_roll_damage()`:
+  - Random damage between min/max.
+  - Crit roll using `crit_chance`.
+  - Crit multiplies damage by `crit_multiplier`.
+  - Returns `{ "damage": int, "is_crit": bool }`.
+
+### Bullet Spawning
+- `spawn_bullet(target_global_pos)`:
+  - Gets `dmg_info` from `_roll_damage()`.
+  - Instantiates bullet.
+  - Sets:
+    - `bullet.direction`
+    - `bullet.rotation`
+    - `bullet.damage = dmg_info.damage`
+    - `bullet.is_crit = dmg_info.is_crit`
+  - Positions at `Muzzle`.
+  - One-shot sound plays with slight pitch randomization.
+  - Emits `fired` signal for camera shake.
 
 ---
 
 ## Bullet System
 
-- Scene: `Bullet.tscn`
-- Script: `bullet.gd` (located in `scripts/weapons/bullet.gd`)
-- Movement:
-  - Uses raycast logic each physics frame:
-    - Computes `from` (current position) and `to` (intended new position).
-    - Calls `intersect_ray` with the bullet's `collision_mask`.
-    - If hit:
-      - Moves to hit position.
-      - Calls `_handle_hit(collider)`.
-      - `queue_free()`.
-    - If no hit:
-      - Moves to `to` normally.
-- Damage:
-  - `damage` exported variable (currently set to 10).
-  - `_handle_hit`:
-    - Ignores nodes in `"player"` group.
-    - If node is in `"enemy"` group and has `take_damage`, calls it with `damage`.
-- Lifetime:
-  - `lifetime` counts down each frame.
-  - Bullet despawns when lifetime <= 0.
+### Continuous Collision Detection
+Bullets use raycasting each frame to avoid tunneling.
+- Track `previous_position`.
+- Compute `target_pos`.
+- Raycast from `previous_position → target_pos + margin`.
+- Use `hit_from_inside = true` to catch inside collider cases.
+- If a hit:
+  - Move to exact hit position.
+  - Call `_handle_hit`.
+  - Free bullet.
+- If no hit:
+  - Move normally.
+  - Update `previous_position`.
+
+### Damage Pass-through
+- Bullet carries:
+  - `damage`
+  - `is_crit`
+- `_handle_hit`:
+  - Ignores `"player"`.
+  - If in `"enemy"` group → call:
+    - `enemy.take_damage(damage, is_crit)`.
+
+### Lifetime
+- Bullet counts down lifetime.
+- Frees itself when low.
 
 ---
 
 ## Enemy System
 
-### Basic Enemy (EnemyBasic)
-- Movement:
-  - Uses gravity to stay grounded.
-  - Horizontal direction computed from `player.global_position.x - global_position.x`.
-  - Requires `player` reference (currently exported and set manually in the editor).
-- Visuals:
-  - `Sprite2D.flip_h` based on direction (left/right).
-- Health:
-  - `max_health` exported (currently 100); `current_health` initialised in `_ready`.
-  - `take_damage(amount)`:
-    - Reduces `current_health`.
-    - Calls `flash_hit` for brief red flash feedback.
-    - Calls `_update_health_bar()` to update the visual health bar.
-    - Calls `die()` when health <= 0.
-  - `die()` currently just `queue_free()`.
-- Health Bar:
-  - Child node `HealthBar` (TextureProgressBar) cached via `@onready var health_bar`.
-  - `_update_health_bar()` function:
-    - Sets `health_bar.max_value = max_health`.
-    - Sets `health_bar.value = current_health`.
-    - Called in `_ready()` to initialize and in `take_damage()` to update.
-- Groups:
-  - Enemy adds itself to `"enemy"` group for bullet detection.
+### Movement
+- Horizontal chasing toward Player.
+- Uses gravity.
+- Sprite flipping based on direction.
+
+### Health
+- `max_health` exported.
+- `current_health` initialized in `_ready()`.
+- `take_damage(amount, is_crit=false)`:
+  - Applies hit flash.
+  - Reduces health.
+  - Updates enemy health bar.
+  - Spawns damage number.
+  - Dies when <= 0.
+
+### Enemy Health Bar
+- Child TextureProgressBar.
+- `_update_health_bar()` sets value/max_value.
+
+### Damage Numbers
+- Exported `damage_number_scene`.
+- Spawned on each hit.
+- Receives `damage` + `is_crit`.
 
 ---
 
-## Player Movement System
+## Damage Number System
 
-### Current
-- Horizontal movement:
-  - Left/Right via input actions (`move_left`, `move_right`).
-  - Speed controlled with exported constants in `player.gd`.
+### Behaviour
+On enemy hit:
+
+1. DamageNumber instance created.
+2. Positioned above enemy.
+3. Displays damage text.
+4. If crit:
+   - Yellow color
+   - Increased scale
+5. Moves along an arcing path.
+6. Fades out.
+7. Deletes itself.
+
+### Motion (parametric)
+- Internal `t` from 0 → 0.6 over lifetime.
+- Horizontal:
+  - `x = start_x + direction_sign * arc_distance * t`
 - Vertical:
-  - Gravity applied when not on floor.
-  - Jump via `Input.is_action_just_pressed("jump")` when `is_on_floor()`.
-- Movement solved with `move_and_slide()`.
+  - `y = start_y - float_distance * sin(t * PI)`
+- Produces a smooth “pop-out + rise” arc.
+- Random left/right arc per number.
 
-### Planned Extensions
-- Dodge roll / ground roll.
-- Air dash.
-- Wall slide + wall jump.
-- Ledge grab and climb.
-- Bars / hooks for swinging.
+### Fade
+- Alpha fades from 1 → 0 over lifetime.
+- `queue_free()` when done.
 
 ---
 
 ## Camera System
 
-- Camera scene: `Camera2D` in `Player.tscn`.
-- Script: `camera_2d.gd`
-- Features:
-  - `start_shake(strength, duration)`:
-    - Sets internal shake timers.
-  - `_process`:
-    - Applies random offset each frame, fading out over time.
-    - Resets offset when shake ends.
-- Trigger:
-  - Weapon emits `fired` signal with shake values.
-  - Player listens and calls `cam.start_shake(strength, duration)`.
+### Shake
+- Camera2D script receives shake strength/duration.
+- Applies random jitter until fade-out.
+- Triggered via `weapon.fired` signal.
 
 ---
 
-## Audio System (Guns)
+## Audio System
 
-- Each gun scene has:
-  - `GunAudio` (`AudioStreamPlayer2D`) with the correct pistol sound.
-- WeaponBase:
-  - Does not play `GunAudio` directly.
-  - Instead, spawns a new `AudioStreamPlayer2D`:
-    - Copies the stream from `GunAudio`.
-    - Positions it at muzzle.
-    - Randomises `pitch_scale` slightly.
-    - Plays it, then auto-frees it on `finished`.
-- Allows overlapping gunshots without cutting off previous sounds.
+### Gunshot System
+- Each weapon has a template `GunAudio` node.
+- WeaponBase duplicates and spawns a one-shot audio player:
+  - Copies stream.
+  - Applies pitch variance.
+  - Plays + frees itself.
 
-## Collision Setup
+---
 
-Layers:
-1 – world
-2 – player
-3 – enemy
-4 – bullet
+## Collision System (Layers)
+- **1 – world**
+- **2 – player**
+- **3 – enemy**
+- **4 – bullet**
 
-Player:
-- Layer: 2
-- Mask: 1, 3
+**Player**
+- Layer: 2  
+- Masks: 1, 3  
 
-World (TileMap / ground):
-- Layer: 1
-- Mask: 2, 3, 4
+**World**
+- Layer: 1  
+- Masks: 2, 3, 4  
 
-Enemy:
-- Layer: 3
-- Mask: 1, 2, 4
+**Enemy**
+- Layer: 3  
+- Masks: 1, 2, 4  
 
-Bullet:
-- Layer: 4
-- Mask: 1, 3
+**Bullet**
+- Layer: 4  
+- Masks: 1, 3  
 
+---

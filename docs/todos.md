@@ -1,38 +1,48 @@
-# TODO — Shoot To Kill
+# TODO — Shoot To Kill (Updated)
 
-## Short-Term (Core Gameplay)
-
-- [ ] Enemy auto-find Player via `"player"` group instead of manual export.
-- [ ] Player HP system.
-- [ ] Enemy attack behaviour (melee or contact damage).
-- [ ] Player knockback + brief invulnerability on hit.
-- [ ] Simple death / respawn or restart level flow.
+## Core Gameplay
+- [ ] Player health system
+- [ ] Enemy contact damage / melee attack
+- [ ] Player invulnerability frames + knockback on hit
+- [ ] Player death / respawn flow
 
 ## Combat Feel / Juice
+- [x] Damage numbers with arc animation
+- [x] Critical hit styling (bigger, yellow)
+- [ ] Weapon recoil / gun kickback
+- [ ] Muzzle flashes
+- [ ] Bullet impact particles (enemy/world)
+- [ ] Enemy hit particles / blood FX
+- [ ] Crit spark FX
 
-- [ ] Muzzle flash on firing (per weapon).
-- [ ] Impact particles when bullets hit enemies / world.
-- [ ] Different gunshot sounds for future weapons (shotgun, rifle, magic staff).
-- [ ] Slight gun recoil / kickback effect on Weapon node.
+## Weapons
+- [ ] Add new weapons (shotgun, SMG, rifle, magic staff)
+- [ ] Weapon cooldowns
+- [ ] Reload system + ammo UI
+- [ ] Weapon switching
 
-## Movement Upgrades
-
-- [ ] Dodge roll.
-- [ ] Air dash.
-- [ ] Wall slide + wall jump.
-- [ ] Ledge grab + climb.
+## Movement
+- [ ] Dodge roll
+- [ ] Air dash
+- [ ] Wall slide + wall jump
+- [ ] Ledge grab + climb
+- [ ] Swinging / grappling hooks
 
 ## UI / UX
+- [ ] Player health bar
+- [ ] Ammo counter
+- [ ] Crosshair
+- [ ] Pause menu
+- [ ] Main menu
 
-- [ ] Player health bar.
-- [ ] Ammo counter for weapons that use magazines.
-- [ ] Crosshair / reticle.
-- [ ] Basic main menu and pause menu.
+## AI
+- [ ] Better enemy pathfinding
+- [ ] Enemy states (idle, chase, attack)
+- [ ] Enemy attack animations
 
-## Longer-Term / Stretch Ideas
-
-- [ ] Co-op mechanics (throwing friends, helping onto ledges).
-- [ ] Gear/abilities for double jump and flying.
-- [ ] Elemental weapon system (fire, ice, etc.).
-- [ ] Stupid/fun weapons (potato gun, etc.).
-- [ ] Story integration (1980s cryochamber → fantasy world).
+## Long-Term Ideas
+- [ ] Elemental weapons/effects (fire/ice/poison)
+- [ ] Armor + resistances
+- [ ] Gear system (crit chance buffs, reload speed, movement boosts)
+- [ ] Coop mechanics
+- [ ] Story integration
