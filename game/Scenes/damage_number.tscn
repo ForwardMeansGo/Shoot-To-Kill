@@ -1,7 +1,7 @@
 [gd_scene load_steps=3 format=3 uid="uid://deefc1di02kvu"]
 
 [ext_resource type="Script" uid="uid://5fayiv0yqviq" path="res://Scripts/damage_number.gd" id="1_m808r"]
-[ext_resource type="FontFile" uid="uid://dmn7bd2op6drj" path="res://Assets/Font/origami-mommy.regular.ttf" id="1_n4jia"]
+[ext_resource type="FontFile" uid="uid://bxebt2lbfg3fx" path="res://Assets/Font/origami-mommy.regular.ttf" id="1_n4jia"]
 
 [node name="DamageNumber" type="Node2D"]
 z_index = 10
