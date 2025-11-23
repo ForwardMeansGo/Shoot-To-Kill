@@ -6,6 +6,8 @@
 
 [node name="Gun" type="Node2D"]
 script = ExtResource("1_oqrbh")
+shake_strength = 0.0
+shake_duration = 0.0
 
 [node name="Muzzle" type="Marker2D" parent="."]
 position = Vector2(8, 0)
@@ -15,5 +17,5 @@ texture = ExtResource("2_t6ynv")
 
 [node name="GunAudio" type="AudioStreamPlayer2D" parent="."]
 stream = ExtResource("3_t6ynv")
-volume_db = -10.0
+volume_db = -15.0
 attenuation = 1.464086

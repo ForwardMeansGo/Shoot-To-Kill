@@ -33,3 +33,7 @@ step = 10.0
 value = 100.0
 texture_under = ExtResource("3_287tu")
 texture_progress = ExtResource("3_afpow")
+
+[node name="DamageArea" type="Area2D" parent="."]
+collision_layer = 4
+collision_mask = 2
