@@ -4,6 +4,7 @@ extends CanvasLayer
 @export var player_path: NodePath = ^"../Player"
 
 var player: Node = null
+var hp_tween: Tween = null
 
 func _ready() -> void:
 	# Find the player
@@ -39,16 +40,26 @@ func _ready() -> void:
 		max_h = player.max_health
 	if "current_health" in player:
 		cur_h = player.current_health
-	
+
 	if health_bar:
 		health_bar.visible = true
 		health_bar.max_value = max_h
 		health_bar.value = cur_h
+		health_bar.step = 1.0
 		print("HUD: Initialized health bar -> ", cur_h, "/", max_h)
 	else:
 		push_error("HUD: health_bar (PlayerHealthBar) not found under HUD")
 
 func _on_player_health_changed(current: int, max: int) -> void:
-	if health_bar:
-		health_bar.max_value = max
-		health_bar.value = current
+	if health_bar == null:
+		return
+
+	health_bar.max_value = max
+
+	# Kill any existing tween so they don't fight
+	if hp_tween and hp_tween.is_valid():
+		hp_tween.kill()
+
+	# Create a new tween to animate from current bar value to the new HP
+	hp_tween = create_tween()
+	hp_tween.tween_property(health_bar, "value", current, 0.15).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)

@@ -1,8 +1,9 @@
 # TODO — Shoot To Kill (Updated)
 
 ## Core Gameplay
-- [ ] Player health system
-- [ ] Enemy contact damage / melee attack
+- [x] Player health system
+- [x] Enemy contact damage
+- [ ] Enemy melee attack
 - [ ] Player invulnerability frames + knockback on hit
 - [ ] Player death / respawn flow
 
@@ -29,7 +30,7 @@
 - [ ] Swinging / grappling hooks
 
 ## UI / UX
-- [ ] Player health bar
+- [x] Player health bar
 - [ ] Ammo counter
 - [ ] Crosshair
 - [ ] Pause menu

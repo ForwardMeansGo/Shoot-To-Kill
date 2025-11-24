@@ -71,6 +71,56 @@ Bullets use raycasting each frame to avoid tunneling.
 
 ---
 
+## Player System
+
+### Movement
+- Uses `CharacterBody2D` with `move_and_slide()`.
+- Horizontal movement via input actions.
+- Jump and gravity system.
+
+### Health
+- `max_health` exported (default 100).
+- `current_health` initialized in `_ready()`.
+- `invulnerability_time` exported (default 0.5s).
+- `invuln_timer` decremented in `_process()`.
+- `take_damage(amount)`:
+  - Returns early if invulnerable.
+  - Reduces health (clamped to 0).
+  - Sets invulnerability timer.
+  - Emits `health_changed` signal.
+  - Calls `die()` if health <= 0.
+- `die()`:
+  - Emits `died` signal.
+  - Reloads current scene.
+
+### Signals
+- `health_changed(current_health, max_health)` - emitted on health change.
+- `died` - emitted when player dies.
+
+---
+
+## HUD System
+
+### Architecture
+- Separate `HUD.tscn` scene (CanvasLayer).
+- `hud.gd` script listens to Player signals.
+- No direct UI references in Player script.
+
+### Health Bar
+- `PlayerHealthBar` (TextureProgressBar) child of HUD.
+- Finds Player node via `player_path` export or as sibling.
+- Connects to Player's `health_changed` signal in `_ready()`.
+- Initializes from Player's current health values.
+- The HUD displays health using raw HP values (0 → max_health) with a smooth tween animation. No percentage conversion is used.
+- Smooth tweening:
+  - Uses `hp_tween` to animate health bar value.
+  - 0.15s duration with `TRANS_SINE` and `EASE_OUT`.
+  - Kills existing tween before creating new one.
+- **Texture Requirements:**
+  - Progress texture must only contain the fill bar, with no heart or frame. Background holds all decorative art. Use Progress Offset to align the fill.
+
+---
+
 ## Enemy System
 
 ### Movement
@@ -97,6 +147,21 @@ Bullets use raycasting each frame to avoid tunneling.
 - Spawned on each hit.
 - Receives `damage` + `is_crit`.
 
+### Contact Damage
+- `contact_damage` exported (default 10).
+- `contact_cooldown` exported (default 0.5s).
+- `DamageArea` (Area2D) child node:
+  - Collision mask includes Player layer (layer 2).
+  - `body_entered` signal connected in `_ready()`.
+- `contact_timer` decremented in `_physics_process()`.
+- `_on_damage_area_body_entered(body)`:
+  - Checks contact cooldown (returns if active).
+  - Handles parent/child node detection:
+    - If collider isn't in `"player"` group but parent is, uses parent.
+  - If target is in `"player"` group and has `take_damage` method:
+    - Calls `target.take_damage(contact_damage)`.
+    - Sets `contact_timer = contact_cooldown`.
+
 ---
 
 ## Damage Number System
@@ -115,12 +180,12 @@ On enemy hit:
 7. Deletes itself.
 
 ### Motion (parametric)
-- Internal `t` from 0 → 0.6 over lifetime.
+- Internal `t` parameter animated from 0.0 → 0.6 over lifetime (only first ~60% of arc is shown).
 - Horizontal:
   - `x = start_x + direction_sign * arc_distance * t`
 - Vertical:
   - `y = start_y - float_distance * sin(t * PI)`
-- Produces a smooth “pop-out + rise” arc.
+- Produces a smooth "pop-out + rise" arc.
 - Random left/right arc per number.
 
 ### Fade

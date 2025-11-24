@@ -39,6 +39,23 @@ Current dev focus: **Combat polish + enemy interactions**
 - `Camera2D` with shake system.
 - Weapon emits a `fired` signal → Player forwards to camera.
 
+### Health System
+- `max_health` exported (default 100).
+- `current_health` initialized in `_ready()`.
+- `invulnerability_time` exported (default 0.5s).
+- `take_damage(amount)`:
+  - Checks invulnerability timer (ignores damage if active).
+  - Reduces health (clamped to 0 minimum).
+  - Sets invulnerability timer.
+  - Emits `health_changed(current_health, max_health)` signal.
+  - Calls `die()` if health <= 0.
+- `die()`:
+  - Emits `died` signal.
+  - Reloads current scene.
+- Signals:
+  - `health_changed(current_health, max_health)` - emitted when health changes.
+  - `died` - emitted when player dies.
+
 ---
 
 ## Weapons (Modular System)
@@ -68,10 +85,10 @@ Current dev focus: **Combat polish + enemy interactions**
 ---
 
 ## Bullet System (`bullet.gd`)
-- **Continuous Collision Detection**
+- **Continuous Collision Detection (CCD)**
   - Prevents tunnelling at high speeds.
   - Tracks `previous_position` each frame.
-  - Raycast from previous_position → target_pos:
+  - Raycast from `previous_position` → `target_pos`:
     - Includes safety margin.
     - Uses `hit_from_inside = true`.
   - If ray hits:
@@ -118,6 +135,18 @@ Current dev focus: **Combat polish + enemy interactions**
 - Positioned slightly above enemy.
 - Passes crit info for visuals.
 
+### Contact Damage
+- `contact_damage` exported (default 10).
+- `contact_cooldown` exported (default 0.5s).
+- `DamageArea` (Area2D) child node:
+  - Collision mask includes Player layer.
+  - Connected to `body_entered` signal in `_ready()`.
+- `_on_damage_area_body_entered(body)`:
+  - Checks contact cooldown timer.
+  - Handles parent/child node detection (if collider isn't in player group but parent is).
+  - Calls `player.take_damage(contact_damage)` if valid.
+  - Sets contact cooldown timer.
+
 ### Group
 - Enemy registers in `"enemy"` group.
 
@@ -146,16 +175,43 @@ Current dev focus: **Combat polish + enemy interactions**
 
 ---
 
+## HUD System (`hud.gd`)
+- Separate CanvasLayer scene (`HUD.tscn`).
+- The HUD is separated from the Player and loaded into the level as its own scene. It listens to the Player via signals and does not live inside the Player.tscn hierarchy.
+- Listens to Player's `health_changed` signal.
+- **Player Health Bar**
+  - `PlayerHealthBar` (TextureProgressBar) child node.
+  - Finds Player via `player_path` export or as sibling.
+  - Connects to `health_changed` signal in `_ready()`.
+  - Initializes from Player's current health values.
+  - Smooth tweening:
+    - Uses `hp_tween` to animate value changes.
+    - 0.15s duration with `TRANS_SINE` and `EASE_OUT`.
+    - Kills existing tween before creating new one.
+- **Texture Requirements (Player Health Bar):**
+  - Background texture contains the heart, frame, and bar track.
+  - Progress texture must be tightly cropped so it includes ONLY the fill bar (no heart, no frame, no large padding).
+  - Align the fill using the TextureProgressBar "Progress → Offset" property.
+  - This fixes the issue where the bar appeared empty at 40 HP.
+
+---
+
 ## Scenes Overview
 ### Level_01.tscn
 - World layout + enemies + player.
 
 ### Player.tscn
-- Player root (CharacterBody2D)
+- Player root (CharacterBody2D, script: `player.gd`, in group `"player"`)
 - Weapon holder
 - Gun
 - Camera2D
-- (Player HP bar not yet implemented)
+- No UI nodes (HUD is separate)
+
+### HUD.tscn
+- HUD root (CanvasLayer, script: `hud.gd`)
+- PlayerHealthBar (TextureProgressBar)
+- Listens to Player's `health_changed` signal
+- Updates health bar with smooth tweening
 
 ### Gun.tscn
 - Weapon scene with muzzle + audio.
@@ -164,23 +220,45 @@ Current dev focus: **Combat polish + enemy interactions**
 - Bullet Area2D + CollisionShape2D.
 
 ### EnemyBasic.tscn
-- Enemy root.
-- Health bar.
-- Sprite.
-- Damage number spawn logic.
+- Enemy root (CharacterBody2D, script: `enemy.gd`)
+- Health bar (TextureProgressBar)
+- Sprite
+- DamageArea (Area2D) for contact damage
+- Damage number spawn logic
 
 ### DamageNumber.tscn
 - Node2D + RichTextLabel for damage display.
 
 ---
 
+## Key Files
+### Scenes
+- `game/scenes/Player.tscn` - Player character scene
+- `game/scenes/HUD.tscn` - HUD UI scene (CanvasLayer)
+- `game/scenes/Level_01.tscn` - Main level scene
+- `game/scenes/Gun.tscn` - Weapon scene
+- `game/scenes/Bullet.tscn` - Bullet scene
+- `game/scenes/EnemyBasic.tscn` - Enemy scene
+- `game/scenes/DamageNumber.tscn` - Damage number display scene
+
+### Scripts
+- `game/scripts/player.gd` - Player movement, health, shooting
+- `game/scripts/hud.gd` - HUD health bar management
+- `game/scripts/camera_2d.gd` - Camera shake system
+- `game/scripts/damage_number.gd` - Floating damage number animation
+- `game/scripts/enemies/enemy.gd` - Enemy AI, health, contact damage
+- `game/scripts/weapons/weapon_base.gd` - Base weapon class with damage/crit system
+- `game/scripts/weapons/weapon_pistol.gd` - Pistol weapon implementation
+- `game/scripts/weapons/bullet.gd` - Bullet movement and collision
+
+---
+
 ## Known Limitations
-- Player HP system not implemented yet.
-- Enemy attack (contact or melee) not implemented yet.
 - Pistol only — no other weapons yet.
-- No reload, ammo, UI.
+- No reload, ammo UI.
 - Enemy pathfinding is simple horizontal chase.
 - No knockback for player or enemies yet.
+- Player invulnerability visual feedback not yet implemented.
 
 ---
 

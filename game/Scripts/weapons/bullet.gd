@@ -4,6 +4,7 @@ extends Area2D
 @export var direction: Vector2 = Vector2.ZERO
 @export var lifetime: float = 1.5
 @export var damage: int = 10
+@export var hit_effect_scene: PackedScene
 
 var previous_position: Vector2
 var is_crit: bool = false
@@ -67,3 +68,9 @@ func _handle_hit(body: Object) -> void:
 		# Damage enemies
 		if node.is_in_group("enemy") and node.has_method("take_damage"):
 			node.take_damage(damage, is_crit)
+			
+			# Spawn hit impact effect if assigned
+			if hit_effect_scene != null:
+				var hit_effect = hit_effect_scene.instantiate()
+				hit_effect.global_position = global_position
+				get_tree().current_scene.add_child(hit_effect)
