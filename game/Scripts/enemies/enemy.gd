@@ -5,13 +5,13 @@ extends CharacterBody2D
 @export var max_health: int = 100
 @export var player: CharacterBody2D
 @export var damage_number_scene: PackedScene
-@export var blood_effect_scene: PackedScene
 @export var contact_damage: int = 10
 @export var contact_cooldown: float = 0.5
 
 enum State {
 	CHASE,
 	ATTACK,
+	DEAD,
 }
 
 var state: State = State.CHASE
@@ -39,6 +39,10 @@ func _ready() -> void:
 			da.body_exited.connect(_on_damage_area_body_exited)
 
 func _physics_process(delta: float) -> void:
+	# If the enemy is dead, don't apply gravity or movement anymore
+	if state == State.DEAD:
+		return
+	
 	# Update contact timer
 	contact_timer = max(contact_timer - delta, 0.0)
 	
@@ -66,6 +70,8 @@ func _physics_process(delta: float) -> void:
 		State.ATTACK:
 			# While attacking / in contact range, don't try to push through the player
 			velocity.x = 0.0
+		State.DEAD:
+			velocity.x = 0.0
 
 	# Flip sprite based on intended direction of movement (still want to face the player)
 	if dir_x != 0.0:
@@ -74,6 +80,9 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 func take_damage(amount: int, is_crit: bool = false) -> void:
+	if state == State.DEAD:
+		return
+	
 	current_health -= amount
 	flash_hit()
 	_update_health_bar()
@@ -92,8 +101,8 @@ func take_damage(amount: int, is_crit: bool = false) -> void:
 		die()
 
 func flash_hit() -> void:
-	# Simple hit feedback – quick red flash (can improve later)
-	sprite.modulate = Color(1, 0.4, 0.4)
+	# Simple hit feedback – quick white flash
+	sprite.modulate = Color(2.0, 2.0, 2.0, 1.0)
 	await get_tree().create_timer(0.05).timeout
 	sprite.modulate = Color(1, 1, 1)
 
@@ -103,6 +112,9 @@ func _update_health_bar() -> void:
 		health_bar.value = current_health
 
 func _on_damage_area_body_entered(body: Node) -> void:
+	if state == State.DEAD:
+		return
+	
 	print("DamageArea entered by: ", body, " name=", body.name, " groups=", body.get_groups())
 	
 	var target := body
@@ -116,6 +128,9 @@ func _on_damage_area_body_entered(body: Node) -> void:
 		state = State.ATTACK
 
 func _on_damage_area_body_exited(body: Node) -> void:
+	if state == State.DEAD:
+		return
+	
 	var target := body
 	
 	if not target.is_in_group("player") and target.get_parent() and target.get_parent().is_in_group("player"):
@@ -126,11 +141,11 @@ func _on_damage_area_body_exited(body: Node) -> void:
 		state = State.CHASE
 
 func die() -> void:
-	# Spawn blood effect on death, if assigned
-	if blood_effect_scene != null:
-		var blood_effect = blood_effect_scene.instantiate()
-		blood_effect.global_position = global_position
-		get_tree().current_scene.add_child(blood_effect)
+	# Prevent death logic from running multiple times
+	if state == State.DEAD:
+		return
 	
-	# Later: play death animation, spawn particles, drop loot etc.
+	state = State.DEAD
+	
+	# Temporary placeholder: just remove the enemy
 	queue_free()

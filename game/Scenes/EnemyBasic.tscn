@@ -1,15 +1,10 @@
-[gd_scene load_steps=11 format=3 uid="uid://b24ka108g6bnw"]
+[gd_scene load_steps=8 format=3 uid="uid://b24ka108g6bnw"]
 
 [ext_resource type="Script" uid="uid://duycd31rxckwt" path="res://Scripts/enemies/enemy.gd" id="1_hghv2"]
 [ext_resource type="Texture2D" uid="uid://d3sxprflqadv8" path="res://Assets/Sprites/Enemy/Demo Enemy.png" id="2_1f0kj"]
 [ext_resource type="PackedScene" uid="uid://deefc1di02kvu" path="res://Scenes/damage_number.tscn" id="2_0830c"]
 [ext_resource type="Texture2D" uid="uid://dsfvqaytjsgf5" path="res://Assets/Sprites/Enemy/EnemyHealthbar1Background.png" id="3_287tu"]
 [ext_resource type="Texture2D" uid="uid://ballj2pmtnuag" path="res://Assets/Sprites/Enemy/Healthbar1Progress.png" id="3_afpow"]
-[ext_resource type="PackedScene" uid="uid://bo18had2tdftq" path="res://Scenes/Effects/enemy_blood.tscn" id="3_pa2dr"]
-[ext_resource type="Shader" uid="uid://0k543axioa4g" path="res://Scenes/Effects/EnemyDissolve.gdshader" id="4_042s1"]
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_5f7wg"]
-shader = ExtResource("4_042s1")
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_1f0kj"]
 size = Vector2(12, 39)
@@ -22,10 +17,8 @@ collision_layer = 4
 collision_mask = 11
 script = ExtResource("1_hghv2")
 damage_number_scene = ExtResource("2_0830c")
-blood_effect_scene = ExtResource("3_pa2dr")
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
-material = SubResource("ShaderMaterial_5f7wg")
 position = Vector2(19, 18)
 texture = ExtResource("2_1f0kj")
 
