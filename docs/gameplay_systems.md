@@ -123,44 +123,85 @@ Bullets use raycasting each frame to avoid tunneling.
 
 ## Enemy System
 
+### State Machine
+Enemies use a state-based system with three states:
+- **CHASE**: Enemy moves horizontally toward player at `move_speed`.
+- **ATTACK**: Enemy stops horizontal movement and deals contact damage repeatedly.
+- **DEAD**: Enemy is dead and all physics/movement is disabled.
+
 ### Movement
-- Horizontal chasing toward Player.
-- Uses gravity.
+- Horizontal chasing toward Player in `CHASE` state.
+- Stops horizontal movement in `ATTACK` state (prevents pushing through player).
+- Uses gravity (except when `DEAD`).
 - Sprite flipping based on direction.
+- Dead enemies (`DEAD` state) skip all physics processing via early return in `_physics_process()`.
 
 ### Health
-- `max_health` exported.
+- `max_health` exported (default 100).
 - `current_health` initialized in `_ready()`.
 - `take_damage(amount, is_crit=false)`:
-  - Applies hit flash.
+  - Returns early if enemy is already `DEAD`.
+  - Applies white hit flash (`flash_hit()`).
   - Reduces health.
   - Updates enemy health bar.
-  - Spawns damage number.
-  - Dies when <= 0.
+  - Spawns damage number with crit info.
+  - Calls `die()` when health <= 0.
+
+### Hit Flash
+- `flash_hit()` function:
+  - Sets `sprite.modulate` to bright white `Color(2.0, 2.0, 2.0, 1.0)`.
+  - Returns to normal white `Color(1, 1, 1)` after 0.05s.
+  - Provides visual feedback when enemy takes damage.
 
 ### Enemy Health Bar
-- Child TextureProgressBar.
-- `_update_health_bar()` sets value/max_value.
+- Child `TextureProgressBar` node.
+- `_update_health_bar()` sets `max_value` and `value` from enemy health.
 
 ### Damage Numbers
-- Exported `damage_number_scene`.
-- Spawned on each hit.
-- Receives `damage` + `is_crit`.
+- Exported `damage_number_scene` (PackedScene).
+- Spawned on each hit at `global_position + Vector2(15, -10)`.
+- Receives `damage` and `is_crit` properties.
+- Added to current scene root.
 
-### Contact Damage
+### Contact Damage (State-Based)
 - `contact_damage` exported (default 10).
 - `contact_cooldown` exported (default 0.5s).
 - `DamageArea` (Area2D) child node:
   - Collision mask includes Player layer (layer 2).
-  - `body_entered` signal connected in `_ready()`.
+  - `body_entered` and `body_exited` signals connected in `_ready()`.
 - `contact_timer` decremented in `_physics_process()`.
+- **Contact damage is only applied while the enemy is in the ATTACK state.**
+- **Once the enemy dies, they can no longer enter ATTACK or deal damage.**
+- **State transitions**:
+  - When player enters `DamageArea`: enemy enters `ATTACK` state.
+  - When player exits `DamageArea`: enemy returns to `CHASE` state.
+- **Repeated damage**:
+  - While in `ATTACK` state and `contact_timer <= 0`:
+    - Deals `contact_damage` to player.
+    - Resets `contact_timer` to `contact_cooldown`.
+  - This allows continuous damage while player remains in contact range.
 - `_on_damage_area_body_entered(body)`:
-  - Checks contact cooldown (returns if active).
+  - Returns early if enemy is `DEAD`.
   - Handles parent/child node detection:
     - If collider isn't in `"player"` group but parent is, uses parent.
   - If target is in `"player"` group and has `take_damage` method:
-    - Calls `target.take_damage(contact_damage)`.
-    - Sets `contact_timer = contact_cooldown`.
+    - Sets state to `ATTACK`.
+- `_on_damage_area_body_exited(body)`:
+  - Returns early if enemy is `DEAD`.
+  - Handles parent/child node detection.
+  - If player exits, sets state back to `CHASE`.
+
+### Death System
+- `die()` function:
+  - Prevents multiple death calls (returns if already `DEAD`).
+  - Sets state to `DEAD`.
+  - Immediately calls `queue_free()` (temporary placeholder).
+- **Physics Skip on Death**:
+  - When an enemy enters the `DEAD` state, `_physics_process()` exits immediately via early return.
+  - This disables all gravity, movement, sliding, and contact damage ticking without needing to modify collision layers or disable DamageArea.
+- **Collision behaviour**:
+  - Dead enemies do not interact with the player because the AI and physics code path is completely skipped while `DEAD`.
+- Dead enemies cannot take damage or deal contact damage.
 
 ---
 

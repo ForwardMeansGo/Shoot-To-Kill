@@ -1,9 +1,10 @@
-[gd_scene load_steps=7 format=4 uid="uid://u2kv25rfoa8m"]
+[gd_scene load_steps=8 format=4 uid="uid://u2kv25rfoa8m"]
 
 [ext_resource type="PackedScene" uid="uid://bfwdbdyqwvha" path="res://Scenes/player.tscn" id="1_f6slu"]
 [ext_resource type="Texture2D" uid="uid://d4huyxawml7lx" path="res://Assets/Sprites/Tilesets/Demo World 1.png" id="2_fr3la"]
 [ext_resource type="PackedScene" uid="uid://b24ka108g6bnw" path="res://Scenes/EnemyBasic.tscn" id="3_pkws4"]
 [ext_resource type="PackedScene" uid="uid://bgl3dadmuu1pk" path="res://Scenes/HUD.tscn" id="4_s7ctl"]
+[ext_resource type="PackedScene" uid="uid://chlljsxawrvdx" path="res://Scenes/crosshair.tscn" id="5_g0uxb"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_pkws4"]
 texture = ExtResource("2_fr3la")
@@ -40,3 +41,8 @@ position = Vector2(249, -17)
 player = NodePath("../../Player")
 
 [node name="HUD" parent="." instance=ExtResource("4_s7ctl")]
+
+[node name="Crosshair" parent="." instance=ExtResource("5_g0uxb")]
+position = Vector2(1, 0)
+player_path = NodePath("../Player")
+dot_radius_pixels = 50.0

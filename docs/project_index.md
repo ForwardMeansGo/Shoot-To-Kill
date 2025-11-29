@@ -110,42 +110,74 @@ Current dev focus: **Combat polish + enemy interactions**
 ---
 
 ## Enemy System (`enemy.gd`)
+### State Machine
+- Three states: `CHASE`, `ATTACK`, `DEAD`.
+- `CHASE`: Moves horizontally toward player.
+- `ATTACK`: Stops movement, deals repeated contact damage.
+- `DEAD`: All physics disabled, enemy removed.
+
 ### Movement
-- Moves toward exported `player` reference.
-- Applies gravity.
+- Moves toward exported `player` reference in `CHASE` state.
+- Stops horizontal movement in `ATTACK` state.
+- Applies gravity (except when `DEAD`).
 - Sprite flips depending on direction.
+- Dead enemies skip all physics via early return.
 
 ### Health
-- `max_health` exported.
+- `max_health` exported (default 100).
 - `current_health` initialized in `_ready()`.
 - `take_damage(amount, is_crit=false)`:
+  - Returns early if already `DEAD`.
   - Reduces health.
-  - Brief red flash (`flash_hit`).
+  - Applies white hit flash (`flash_hit()`).
   - Updates health bar.
-  - Spawns damage number:
-    - Passes `damage` + `is_crit`.
+  - Spawns damage number with `damage` + `is_crit`.
+
+### Hit Flash
+- `flash_hit()`: Bright white flash (`Color(2.0, 2.0, 2.0)`) for 0.05s.
 
 ### Health Bar
 - Child `TextureProgressBar`.
-- Updated each hit.
+- Updated each hit via `_update_health_bar()`.
 
 ### Damage Numbers
 - Exported `damage_number_scene`.
-- Instantiates on hit.
-- Positioned slightly above enemy.
+- Instantiates on hit at `global_position + Vector2(15, -10)`.
 - Passes crit info for visuals.
 
-### Contact Damage
+### Contact Damage (State-Based)
 - `contact_damage` exported (default 10).
 - `contact_cooldown` exported (default 0.5s).
 - `DamageArea` (Area2D) child node:
   - Collision mask includes Player layer.
-  - Connected to `body_entered` signal in `_ready()`.
+  - `body_entered` and `body_exited` signals connected in `_ready()`.
+- **Contact damage is only applied while the enemy is in the ATTACK state.**
+- **Once the enemy dies, they can no longer enter ATTACK or deal damage.**
+- **State transitions**:
+  - Player enters `DamageArea` → state becomes `ATTACK`.
+  - Player exits `DamageArea` → state returns to `CHASE`.
+- **Repeated damage**:
+  - While in `ATTACK` state, deals `contact_damage` every `contact_cooldown` seconds.
+  - Enemy stops horizontal movement to prevent pushing through player.
 - `_on_damage_area_body_entered(body)`:
-  - Checks contact cooldown timer.
-  - Handles parent/child node detection (if collider isn't in player group but parent is).
-  - Calls `player.take_damage(contact_damage)` if valid.
-  - Sets contact cooldown timer.
+  - Returns early if `DEAD`.
+  - Handles parent/child node detection.
+  - Sets state to `ATTACK` if player detected.
+- `_on_damage_area_body_exited(body)`:
+  - Returns early if `DEAD`.
+  - Sets state back to `CHASE` if player exits.
+
+### Death System
+- `die()` function:
+  - Prevents multiple calls (checks `DEAD` state).
+  - Sets state to `DEAD`.
+  - Immediately calls `queue_free()` (temporary placeholder).
+- **Physics Skip on Death**:
+  - When an enemy enters the `DEAD` state, `_physics_process()` exits immediately via early return.
+  - This disables all gravity, movement, sliding, and contact damage ticking without needing to modify collision layers or disable DamageArea.
+- **Collision behaviour**:
+  - Dead enemies do not interact with the player because the AI and physics code path is completely skipped while `DEAD`.
+- Dead enemies cannot take damage or deal contact damage.
 
 ### Group
 - Enemy registers in `"enemy"` group.

@@ -2,12 +2,14 @@ extends CharacterBody2D
 
 @onready var weapon_holder: Node2D = $WeaponHolder
 @onready var gun: Node2D = $WeaponHolder/Gun
-@onready var sprite_2d: Sprite2D = $Sprite2D
+@onready var arm_sprite: Sprite2D = $WeaponHolder/ArmSprite
+@onready var anim_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var cam: Camera2D = $Camera2D
 
 const SPEED: float = 75.0
 const JUMP_FORCE: float = -250.0
 const GRAVITY: float = 1200.0
+const AIM_DEADZONE_RADIUS: float = 10.0
 
 @export var max_health: int = 100
 @export var invulnerability_time: float = 0.5
@@ -18,6 +20,8 @@ signal died
 var weapon_base_offset: Vector2
 var current_health: int
 var invuln_timer: float = 0.0
+var aim_direction: Vector2 = Vector2.RIGHT
+var aim_desired_direction: Vector2 = Vector2.RIGHT
 
 func _ready() -> void:
 	weapon_base_offset = weapon_holder.position
@@ -47,6 +51,8 @@ func _physics_process(delta: float) -> void:
 		velocity.y = JUMP_FORCE
 
 	move_and_slide()
+	
+	_update_animation()
 
 func _process(delta: float) -> void:
 	# Update invulnerability timer
@@ -59,20 +65,55 @@ func _process(delta: float) -> void:
 		return
 
 	var mouse_pos: Vector2 = get_global_mouse_position()
-	gun.aim_at(mouse_pos)
 
 	# Facing based on player center vs mouse X (GLOBAL)
 	var facing_left := mouse_pos.x < global_position.x
 
 	if facing_left:
 		# Flip body
-		sprite_2d.scale.x = -1.0
-		# Move gun holder to LEFT side
-		weapon_holder.position.x = -abs(weapon_base_offset.x)
+		anim_sprite.scale.x = -1.0
+		# Per-side tweak for arm+gun pivot (8 right, 0 up)
+		weapon_holder.position = weapon_base_offset + Vector2(8,0)
 	else:
-		sprite_2d.scale.x = 1.0
-		# Move gun holder to RIGHT side
-		weapon_holder.position.x = abs(weapon_base_offset.x)
+		anim_sprite.scale.x = 1.0
+		weapon_holder.position = weapon_base_offset
+
+	var aim_target: Vector2 = mouse_pos  # Default fallback
+
+	if arm_sprite:
+		var origin: Vector2 = arm_sprite.global_position
+		var raw_dir: Vector2 = mouse_pos - origin
+		
+		# Deadzone check
+		if raw_dir.length() > AIM_DEADZONE_RADIUS:
+			var desired_dir: Vector2 = raw_dir.normalized()
+			aim_desired_direction = desired_dir
+			aim_direction = desired_dir  # IMMEDIATE AIM SNAP
+		
+		# Use aim direction for both gun + arm
+		aim_target = origin + aim_direction * 1000.0
+		gun.aim_at(aim_target)
+		
+		var target_angle: float = aim_direction.angle()
+		arm_sprite.global_rotation = target_angle
+		
+		if self.has_method("_update_arm_visual_flip"):
+			_update_arm_visual_flip()
+		
+		# Gun hand offset (KEEP YOUR EXISTING LEFT/RIGHT TUNED VALUES)
+		if gun:
+			var hand_offset: Vector2
+			
+			if facing_left:
+				hand_offset = Vector2(8, 2)   # your tuned left values
+			else:
+				hand_offset = Vector2(8, -2)    # your tuned right values
+			
+			gun.global_position = arm_sprite.global_position + hand_offset.rotated(arm_sprite.global_rotation)
+	else:
+		# Fallback if arm missing
+		gun.aim_at(mouse_pos)
+		aim_target = mouse_pos
 
 	# Tell the weapon which way we're facing so it can flip its sprite
 	if gun.has_method("set_facing_left"):
@@ -81,7 +122,45 @@ func _process(delta: float) -> void:
 	# Semi-auto pistol: one shot per click
 	if Input.is_action_just_pressed("shoot"):
 		if gun.has_method("try_shoot"):
-			gun.try_shoot(mouse_pos)
+			# Use the same aim_target we used for gun.aim_at(), so bullets follow the actual gun aim
+			gun.try_shoot(aim_target)
+
+func _update_animation() -> void:
+	var is_moving: bool = abs(velocity.x) > 1.0
+
+	if is_on_floor() and is_moving:
+		if anim_sprite.animation != "run":
+			anim_sprite.play("run")
+	else:
+		if anim_sprite.animation != "idle":
+			anim_sprite.play("idle")
+
+func _update_arm_visual_flip() -> void:
+	if arm_sprite == null:
+		return
+
+	var angle := wrapf(arm_sprite.global_rotation, -PI, PI)
+	if angle > PI / 2.0 or angle < -PI / 2.0:
+		arm_sprite.scale.y = -1.0
+	else:
+		arm_sprite.scale.y = 1.0
+		
+func get_aim_origin_global() -> Vector2:
+	if arm_sprite != null:
+		return arm_sprite.global_position
+	elif gun != null:
+		return gun.global_position
+	return global_position
+
+func get_aim_target_global(distance: float = 100.0) -> Vector2:
+	# Use the current aim_direction
+	return get_aim_origin_global() + aim_direction * distance
+
+func get_aim_direction() -> Vector2:
+	return aim_direction
+
+func get_aim_desired_direction() -> Vector2:
+	return aim_desired_direction
 
 func _on_weapon_fired(strength: float, duration: float) -> void:
 	if cam != null:
