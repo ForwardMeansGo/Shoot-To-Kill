@@ -8,6 +8,7 @@
 script = ExtResource("1_oqrbh")
 shake_strength = 0.0
 shake_duration = 0.0
+aim_dot_lerp_speed = 15.0
 
 [node name="Muzzle" type="Marker2D" parent="."]
 position = Vector2(8, 0)

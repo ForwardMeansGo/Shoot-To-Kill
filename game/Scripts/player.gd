@@ -5,11 +5,11 @@ extends CharacterBody2D
 @onready var arm_sprite: Sprite2D = $WeaponHolder/ArmSprite
 @onready var anim_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var cam: Camera2D = $Camera2D
+@onready var crosshair = $"../Crosshair"
 
 const SPEED: float = 75.0
 const JUMP_FORCE: float = -250.0
 const GRAVITY: float = 1200.0
-const AIM_DEADZONE_RADIUS: float = 10.0
 
 @export var max_health: int = 100
 @export var invulnerability_time: float = 0.5
@@ -20,8 +20,7 @@ signal died
 var weapon_base_offset: Vector2
 var current_health: int
 var invuln_timer: float = 0.0
-var aim_direction: Vector2 = Vector2.RIGHT
-var aim_desired_direction: Vector2 = Vector2.RIGHT
+var default_aim_dot_lerp_speed: float = 10.0
 
 func _ready() -> void:
 	weapon_base_offset = weapon_holder.position
@@ -78,24 +77,24 @@ func _process(delta: float) -> void:
 		anim_sprite.scale.x = 1.0
 		weapon_holder.position = weapon_base_offset
 
-	var aim_target: Vector2 = mouse_pos  # Default fallback
+	# Get weighted dot world position
+	var aim_point: Vector2
+	if crosshair != null and crosshair.has_method("get_dot_world_position"):
+		aim_point = crosshair.get_dot_world_position()
+	else:
+		aim_point = mouse_pos  # Fallback to mouse if crosshair unavailable
+
+	# Gun rotation
+	gun.aim_at(aim_point)
 
 	if arm_sprite:
+		# Arm rotation based on aim point
 		var origin: Vector2 = arm_sprite.global_position
-		var raw_dir: Vector2 = mouse_pos - origin
-		
-		# Deadzone check
-		if raw_dir.length() > AIM_DEADZONE_RADIUS:
-			var desired_dir: Vector2 = raw_dir.normalized()
-			aim_desired_direction = desired_dir
-			aim_direction = desired_dir  # IMMEDIATE AIM SNAP
-		
-		# Use aim direction for both gun + arm
-		aim_target = origin + aim_direction * 1000.0
-		gun.aim_at(aim_target)
-		
-		var target_angle: float = aim_direction.angle()
-		arm_sprite.global_rotation = target_angle
+		var to_aim: Vector2 = aim_point - origin
+		if to_aim.length() > 0.001:
+			var aim_dir: Vector2 = to_aim.normalized()
+			var target_angle: float = aim_dir.angle()
+			arm_sprite.global_rotation = target_angle
 		
 		if self.has_method("_update_arm_visual_flip"):
 			_update_arm_visual_flip()
@@ -110,20 +109,15 @@ func _process(delta: float) -> void:
 				hand_offset = Vector2(8, -2)    # your tuned right values
 			
 			gun.global_position = arm_sprite.global_position + hand_offset.rotated(arm_sprite.global_rotation)
-	else:
-		# Fallback if arm missing
-		gun.aim_at(mouse_pos)
-		aim_target = mouse_pos
 
 	# Tell the weapon which way we're facing so it can flip its sprite
 	if gun.has_method("set_facing_left"):
 		gun.set_facing_left(facing_left)
 
-	# Semi-auto pistol: one shot per click
+	# Gun firing should use the SAME aim_point
 	if Input.is_action_just_pressed("shoot"):
 		if gun.has_method("try_shoot"):
-			# Use the same aim_target we used for gun.aim_at(), so bullets follow the actual gun aim
-			gun.try_shoot(aim_target)
+			gun.try_shoot(aim_point)
 
 func _update_animation() -> void:
 	var is_moving: bool = abs(velocity.x) > 1.0
@@ -152,15 +146,10 @@ func get_aim_origin_global() -> Vector2:
 		return gun.global_position
 	return global_position
 
-func get_aim_target_global(distance: float = 100.0) -> Vector2:
-	# Use the current aim_direction
-	return get_aim_origin_global() + aim_direction * distance
-
-func get_aim_direction() -> Vector2:
-	return aim_direction
-
-func get_aim_desired_direction() -> Vector2:
-	return aim_desired_direction
+func get_current_dot_lerp_speed() -> float:
+	if gun != null and gun.has_method("get_aim_dot_lerp_speed"):
+		return gun.get_aim_dot_lerp_speed()
+	return default_aim_dot_lerp_speed
 
 func _on_weapon_fired(strength: float, duration: float) -> void:
 	if cam != null:

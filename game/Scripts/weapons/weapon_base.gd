@@ -16,6 +16,9 @@ signal fired(shake_strength: float, shake_duration: float)
 @export var crit_chance: float = 0.1  # 10% crit as a default
 @export var crit_multiplier: float = 2.0  # 2x damage on crit by default
 
+# Per-weapon aim dot smoothing (gunAimDelay)
+@export var aim_dot_lerp_speed: float = 10.0
+
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var audio_player: AudioStreamPlayer2D = $GunAudio
 
@@ -69,6 +72,9 @@ func _roll_damage() -> Dictionary:
 		"damage": roundi(base),
 		"is_crit": crit
 	}
+
+func get_aim_dot_lerp_speed() -> float:
+	return aim_dot_lerp_speed
 
 func _play_shot_sound(at_position: Vector2) -> void:
 	# If there's no template audio player or stream, bail out
