@@ -8,7 +8,7 @@ extends CharacterBody2D
 @onready var crosshair = $"../Crosshair"
 
 const SPEED: float = 75.0
-const JUMP_FORCE: float = -250.0
+const JUMP_FORCE: float = -275
 const GRAVITY: float = 1200.0
 
 @export var max_health: int = 100

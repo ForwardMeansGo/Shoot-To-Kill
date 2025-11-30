@@ -1,18 +1,17 @@
 [gd_scene load_steps=3 format=3 uid="uid://deefc1di02kvu"]
 
 [ext_resource type="Script" uid="uid://5fayiv0yqviq" path="res://Scripts/damage_number.gd" id="1_m808r"]
-[ext_resource type="FontFile" uid="uid://bxebt2lbfg3fx" path="res://Assets/Font/origami-mommy.regular.ttf" id="1_n4jia"]
+[ext_resource type="FontFile" uid="uid://bqd2ojdqurdyh" path="res://Assets/Font/ari-w9500-condensed-display.ttf" id="2_m808r"]
 
 [node name="DamageNumber" type="Node2D"]
 z_index = 10
 script = ExtResource("1_m808r")
-float_distance = 20.0
 
 [node name="Label" type="RichTextLabel" parent="."]
 offset_right = 40.0
 offset_bottom = 40.0
 scale = Vector2(0.3199997, 0.3199997)
-theme_override_fonts/normal_font = ExtResource("1_n4jia")
+theme_override_fonts/normal_font = ExtResource("2_m808r")
 text = "10
 "
 horizontal_alignment = 1

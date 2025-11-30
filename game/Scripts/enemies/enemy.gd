@@ -7,6 +7,9 @@ extends CharacterBody2D
 @export var damage_number_scene: PackedScene
 @export var contact_damage: int = 10
 @export var contact_cooldown: float = 0.5
+@export var flash_duration: float = 0.09
+@export var flash_intensity: float = 1.0  # 0.0–1.0, how white the flash is
+@export var damage_bar_lag_duration: float = 0.2
 
 enum State {
 	CHASE,
@@ -18,14 +21,25 @@ var state: State = State.CHASE
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var health_bar: TextureProgressBar = $HealthBar
+@onready var damage_bar: TextureProgressBar = $HealthBar/DamageBar
+
+var is_flashing: bool = false
+var flash_material: ShaderMaterial
 
 var current_health: int
 var contact_timer: float = 0.0
+var damage_bar_tween: Tween
 
 func _ready() -> void:
 	current_health = max_health
 	add_to_group("enemy") # so bullets can recognise this as an enemy
 	_update_health_bar()
+	
+	# Assign per-instance flash shader material to this enemy sprite
+	var flash_shader := preload("res://shaders/enemy_flash.gdshader")
+	flash_material = ShaderMaterial.new()
+	flash_material.shader = flash_shader
+	sprite.material = flash_material
 	
 	state = State.CHASE
 	
@@ -87,6 +101,12 @@ func take_damage(amount: int, is_crit: bool = false) -> void:
 	flash_hit()
 	_update_health_bar()
 	
+	var is_killing_blow: bool = current_health <= 0
+	
+	var move_dir_sign: float = 0.0
+	if player != null:
+		move_dir_sign = sign(player.global_position.x - global_position.x)
+	
 	# Spawn damage number if scene is set
 	if damage_number_scene != null:
 		var dmg = damage_number_scene.instantiate()
@@ -95,21 +115,59 @@ func take_damage(amount: int, is_crit: bool = false) -> void:
 			dmg.damage = amount
 		if "is_crit" in dmg:
 			dmg.is_crit = is_crit
+		if "is_killing_blow" in dmg:
+			dmg.is_killing_blow = is_killing_blow
+		if "movement_dir_sign" in dmg:
+			dmg.movement_dir_sign = move_dir_sign
 		get_tree().current_scene.add_child(dmg)
 
 	if current_health <= 0:
 		die()
 
 func flash_hit() -> void:
-	# Simple hit feedback – quick white flash
-	sprite.modulate = Color(2.0, 2.0, 2.0, 1.0)
-	await get_tree().create_timer(0.05).timeout
-	sprite.modulate = Color(1, 1, 1)
+	if is_flashing:
+		return
+	
+	is_flashing = true
+	
+	if flash_material == null:
+		is_flashing = false
+		return
+	
+	# Turn flash ON (full white)
+	flash_material.set_shader_parameter("flash_amount", clamp(flash_intensity, 0.0, 1.0))
+	
+	# Keep it white for ~0.5 seconds
+	await get_tree().create_timer(flash_duration).timeout
+	
+	# Turn flash OFF (back to original)
+	if state != State.DEAD:
+		flash_material.set_shader_parameter("flash_amount", 0.0)
+	
+	is_flashing = false
 
 func _update_health_bar() -> void:
 	if health_bar != null:
 		health_bar.max_value = max_health
 		health_bar.value = current_health
+	
+	if damage_bar != null:
+		damage_bar.max_value = max_health
+		
+		# If healed or starting up, snap up immediately
+		if damage_bar.value < current_health:
+			damage_bar.value = current_health
+		# If taking damage, animate down
+		elif damage_bar.value > current_health:
+			if damage_bar_tween != null:
+				damage_bar_tween.kill()
+			damage_bar_tween = create_tween()
+			damage_bar_tween.tween_property(
+				damage_bar,
+				"value",
+				current_health,
+				damage_bar_lag_duration
+			)
 
 func _on_damage_area_body_entered(body: Node) -> void:
 	if state == State.DEAD:

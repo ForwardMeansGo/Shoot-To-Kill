@@ -1,35 +1,45 @@
-[gd_scene load_steps=8 format=3 uid="uid://b24ka108g6bnw"]
+[gd_scene load_steps=11 format=3 uid="uid://b24ka108g6bnw"]
 
 [ext_resource type="Script" uid="uid://duycd31rxckwt" path="res://Scripts/enemies/enemy.gd" id="1_hghv2"]
-[ext_resource type="Texture2D" uid="uid://d3sxprflqadv8" path="res://Assets/Sprites/Enemy/Demo Enemy.png" id="2_1f0kj"]
 [ext_resource type="PackedScene" uid="uid://deefc1di02kvu" path="res://Scenes/damage_number.tscn" id="2_0830c"]
 [ext_resource type="Texture2D" uid="uid://dsfvqaytjsgf5" path="res://Assets/Sprites/Enemy/EnemyHealthbar1Background.png" id="3_287tu"]
 [ext_resource type="Texture2D" uid="uid://ballj2pmtnuag" path="res://Assets/Sprites/Enemy/Healthbar1Progress.png" id="3_afpow"]
+[ext_resource type="Shader" uid="uid://n3mvtfwlowtt" path="res://shaders/enemy_flash.gdshader" id="3_pa2dr"]
+[ext_resource type="Texture2D" uid="uid://btmqink14vi7" path="res://Assets/Sprites/Enemy/Dark Enemy.png" id="3_rfug7"]
+[ext_resource type="Texture2D" uid="uid://cts3vhojv7lqv" path="res://Assets/Sprites/Enemy/EnemyHealthbar1Lag.png" id="7_042s1"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_042s1"]
+shader = ExtResource("3_pa2dr")
+shader_parameter/flash_amount = 0.0
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_1f0kj"]
-size = Vector2(12, 39)
+size = Vector2(9, 31)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_rfug7"]
-size = Vector2(24, 39)
+size = Vector2(14.29185, 33.571255)
 
 [node name="Enemy" type="CharacterBody2D" groups=["enemies"]]
 collision_layer = 4
 collision_mask = 11
 script = ExtResource("1_hghv2")
 damage_number_scene = ExtResource("2_0830c")
+flash_intensity = 0.7
+damage_bar_lag_duration = 0.7
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
+material = SubResource("ShaderMaterial_042s1")
 position = Vector2(19, 18)
-texture = ExtResource("2_1f0kj")
+texture = ExtResource("3_rfug7")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-position = Vector2(19, 20.5)
+position = Vector2(17.5, 18.5)
 shape = SubResource("RectangleShape2D_1f0kj")
 
 [node name="HealthBar" type="TextureProgressBar" parent="."]
-offset_left = 11.0
+z_index = -2
+offset_left = 13.0
 offset_top = -8.0
-offset_right = 51.0
+offset_right = 46.193665
 offset_bottom = 32.0
 scale = Vector2(0.45189348, 0.39640105)
 step = 10.0
@@ -37,11 +47,19 @@ value = 100.0
 texture_under = ExtResource("3_287tu")
 texture_progress = ExtResource("3_afpow")
 
+[node name="DamageBar" type="TextureProgressBar" parent="HealthBar"]
+z_index = -1
+layout_mode = 0
+offset_right = 33.193665
+offset_bottom = 40.0
+value = 50.0
+texture_progress = ExtResource("7_042s1")
+
 [node name="DamageArea" type="Area2D" parent="."]
 collision_layer = 4
 collision_mask = 2
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="DamageArea"]
-position = Vector2(19, 20.5)
+position = Vector2(17.000002, 17.895824)
 scale = Vector2(1.3993989, 0.9594026)
 shape = SubResource("RectangleShape2D_rfug7")

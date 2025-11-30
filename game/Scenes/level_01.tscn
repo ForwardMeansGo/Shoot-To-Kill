@@ -45,4 +45,3 @@ player = NodePath("../../Player")
 [node name="Crosshair" parent="." instance=ExtResource("5_g0uxb")]
 position = Vector2(1, 0)
 player_path = NodePath("../Player")
-dot_lerp_speed = 25.0
