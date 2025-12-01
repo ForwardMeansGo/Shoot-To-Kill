@@ -25,6 +25,13 @@ Weapons live under `scripts/weapons/`.
   - Crit multiplies damage by `crit_multiplier`.
   - Returns `{ "damage": int, "is_crit": bool }`.
 
+### Aim Dot Smoothing
+- Each weapon exposes `aim_dot_lerp_speed` (default 10.0).
+- Controls how quickly the weighted aim dot catches up to the mouse.
+- Higher values = snappier aiming (lighter weapons).
+- Lower values = heavier aiming (heavier weapons).
+- Player queries weapon via `get_aim_dot_lerp_speed()` method.
+
 ### Bullet Spawning
 - `spawn_bullet(target_global_pos)`:
   - Gets `dmg_info` from `_roll_damage()`.
@@ -77,6 +84,28 @@ Bullets use raycasting each frame to avoid tunneling.
 - Uses `CharacterBody2D` with `move_and_slide()`.
 - Horizontal movement via input actions.
 - Jump and gravity system.
+
+### Animation
+- Animation logic consolidated in `_update_animation()` helper function.
+- Called from `_physics_process()` after `move_and_slide()`.
+- "run" animation plays when `abs(velocity.x) > 1.0` AND `is_on_floor()`.
+- "idle" animation plays when not moving OR in the air.
+- No animation logic in `_process()`.
+
+### Aiming System
+- **Weighted Aim Dot**: Player aims at `crosshair.get_dot_world_position()` instead of raw mouse.
+- **Arm and Gun Aiming**:
+  - Arm sprite (`$WeaponHolder/ArmSprite`) rotates independently toward aim point.
+  - Gun positioned relative to arm using `hand_offset` rotated by arm rotation.
+  - Per-facing offsets for weapon holder position and gun hand offset.
+  - Arm visual flip helper prevents upside-down appearance when aiming across top.
+- **Per-Facing Offsets**:
+  - Weapon holder: `weapon_base_offset + Vector2(8, 0)` when facing left, `weapon_base_offset` when facing right.
+  - Gun hand offset: `Vector2(8, 2)` when facing left, `Vector2(8, -2)` when facing right.
+- **Crosshair Integration**:
+  - Player references `$"../Crosshair"` node.
+  - Gun and arm both aim at weighted dot position.
+  - Shooting uses weighted dot position, not raw mouse.
 
 ### Health
 - `max_health` exported (default 100).
@@ -148,19 +177,43 @@ Enemies use a state-based system with three states:
   - Calls `die()` when health <= 0.
 
 ### Hit Flash
-- `flash_hit()` function:
-  - Sets `sprite.modulate` to bright white `Color(2.0, 2.0, 2.0, 1.0)`.
-  - Returns to normal white `Color(1, 1, 1)` after 0.05s.
-  - Provides visual feedback when enemy takes damage.
+- Shader-based flash system using `enemy_flash.gdshader`.
+- **Shader Material**:
+  - Each enemy gets a unique `ShaderMaterial` instance in `_ready()`.
+  - Shader uses `flash_amount` uniform (0.0–1.0) to mix texture with pure white.
+  - Ensures visible flash even on dark/black sprites.
+- **Flash Behavior**:
+  - `flash_hit()` sets `flash_amount` to `flash_intensity` (default 1.0).
+  - Waits for `flash_duration` (default 0.09s).
+  - Resets `flash_amount` to 0.0 (unless enemy is dead).
+  - `is_flashing` flag prevents overlapping flashes.
+- **Exports**:
+  - `flash_duration`: float (default 0.09s)
+  - `flash_intensity`: float 0.0–1.0 (default 1.0)
 
-### Enemy Health Bar
-- Child `TextureProgressBar` node.
-- `_update_health_bar()` sets `max_value` and `value` from enemy health.
+### Enemy Health Bar System
+- **HealthBar** (TextureProgressBar): Direct child of Enemy node.
+  - Updates instantly to `current_health`.
+  - `max_value` set to `max_health`.
+- **DamageBar** (TextureProgressBar): Direct child of Enemy node.
+  - Lags behind health bar for visual feedback.
+  - `max_value` set to `max_health + damage_bar_max_offset` (prevents edge clipping).
+  - **Behavior**:
+    - If `damage_bar.value < current_health` (healed): snaps up immediately.
+    - If `damage_bar.value > current_health` (taking damage): smoothly tweens down.
+  - Uses `damage_bar_tween` to animate value changes.
+  - **Exports**:
+    - `damage_bar_lag_duration`: float (default 0.2s)
+    - `damage_bar_max_offset`: float (default 1.0)
 
 ### Damage Numbers
 - Exported `damage_number_scene` (PackedScene).
 - Spawned on each hit at `global_position + Vector2(15, -10)`.
-- Receives `damage` and `is_crit` properties.
+- **Properties Passed**:
+  - `damage`: int
+  - `is_crit`: bool
+  - `is_killing_blow`: bool (computed as `current_health <= 0` after damage)
+  - `movement_dir_sign`: float (enemy movement direction: `sign(player.x - enemy.x)`)
 - Added to current scene root.
 
 ### Contact Damage (State-Based)
@@ -213,12 +266,18 @@ On enemy hit:
 1. DamageNumber instance created.
 2. Positioned above enemy.
 3. Displays damage text.
-4. If crit:
-   - Yellow color
-   - Increased scale
-5. Moves along an arcing path.
-6. Fades out.
-7. Deletes itself.
+4. Color determined by hit type (priority: killing blow > crit > normal).
+5. Moves along an arcing path with dynamic distance.
+6. Rotation applied conditionally based on arc vs. movement direction.
+7. Fades out.
+8. Deletes itself.
+
+### Color System
+- **Normal hits**: `normal_color` (default: white).
+- **Crit hits**: `crit_color` (default: yellow `Color(1.0, 1.0, 0.2)`).
+- **Killing blows**: `kill_color` (default: red `Color(0.672, 0.101, 0.0, 1.0)`).
+- Priority: killing blow > crit > normal.
+- Crit and killing blows use 1.5x scale.
 
 ### Motion (parametric)
 - Internal `t` parameter animated from 0.0 → 0.6 over lifetime (only first ~60% of arc is shown).
@@ -227,13 +286,72 @@ On enemy hit:
 - Vertical:
   - `y = start_y - float_distance * sin(t * PI)`
 - Produces a smooth "pop-out + rise" arc.
-- Random left/right arc per number.
+
+### Arc Direction System
+- **Normal hits**: Random left/right (`direction_sign = ±1.0`).
+- **Crit/Killing blows**: Arc opposite to enemy movement direction.
+  - If `movement_dir_sign > 0` (enemy moving right): `direction_sign = -1.0` (arc left).
+  - If `movement_dir_sign < 0` (enemy moving left): `direction_sign = 1.0` (arc right).
+  - Fallback to random if movement direction unknown.
+
+### Dynamic Arc Distance
+- Base `arc_distance` (default 10.0, user set).
+- **Arc Boost Factor**: `arc_boost_factor` (default 1.4, user set to 5.0).
+- **Logic**:
+  - If arc goes WITH enemy movement (`sign(arc_dir) == sign(move_dir)`):
+    - `arc_distance *= arc_boost_factor` (compensates for enemy running away).
+  - If arc goes OPPOSITE enemy movement:
+    - `arc_distance` remains unchanged.
+- Prevents visual size discrepancy when enemy moves.
+
+### Rotation System
+- **Rotation Range**: `min_rot_deg` to `max_rot_deg` (default 10°–30°).
+- **Conditional Application**:
+  - Rotation ONLY applied when arc direction is OPPOSITE to enemy movement.
+  - If arc goes SAME direction as movement: `rotation_degrees = 0.0`.
+- **Rotation Direction**:
+  - Enemy moving LEFT, arc RIGHT: positive rotation.
+  - Enemy moving RIGHT, arc LEFT: negative rotation.
+- Prevents rotation when arc and movement align.
 
 ### Fade
 - Alpha fades from 1 → 0 over lifetime.
 - `queue_free()` when done.
 
 ---
+
+## Crosshair System
+
+### Architecture
+- Separate `Crosshair.tscn` scene (Node2D root).
+- Two child sprites: `Outer` (Sprite2D) and `Dot` (Sprite2D).
+- `crosshair.gd` script manages both sprites independently.
+
+### Outer Crosshair
+- Follows mouse instantly in world space.
+- `outer_sprite.global_position = mouse_world` each frame.
+- Represents raw player input.
+
+### Weighted Aim Dot
+- Smoothly lags behind mouse using screen-space lerp.
+- **Screen-Space Smoothing**:
+  - Lerp performed in screen coordinates (`get_viewport().get_mouse_position()`).
+  - Prevents lag from player movement (only lags behind mouse movement).
+  - Smoothed screen position converted back to world space using canvas transform.
+- **Per-Weapon Smoothing**:
+  - Each weapon exposes `aim_dot_lerp_speed` (default 10.0).
+  - Player provides `get_current_dot_lerp_speed()` helper.
+  - Crosshair queries player for current weapon's speed.
+  - Heavier weapons (RPG, LMG) use lower values (5–7).
+  - Lighter weapons (pistol, SMG) use higher values (12–18).
+- **World Position**:
+  - `get_dot_world_position()` returns dot's current world position.
+  - Player aims gun and arm at this position.
+  - Bullets fire toward this position (not raw mouse).
+
+### Screen-to-World Conversion
+- Uses `get_viewport().get_canvas_transform().affine_inverse() * dot_screen_pos`.
+- Correct Godot 4 method for converting screen coordinates to world space.
 
 ## Camera System
 

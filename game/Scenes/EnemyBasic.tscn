@@ -3,9 +3,9 @@
 [ext_resource type="Script" uid="uid://duycd31rxckwt" path="res://Scripts/enemies/enemy.gd" id="1_hghv2"]
 [ext_resource type="PackedScene" uid="uid://deefc1di02kvu" path="res://Scenes/damage_number.tscn" id="2_0830c"]
 [ext_resource type="Texture2D" uid="uid://dsfvqaytjsgf5" path="res://Assets/Sprites/Enemy/EnemyHealthbar1Background.png" id="3_287tu"]
-[ext_resource type="Texture2D" uid="uid://ballj2pmtnuag" path="res://Assets/Sprites/Enemy/Healthbar1Progress.png" id="3_afpow"]
 [ext_resource type="Shader" uid="uid://n3mvtfwlowtt" path="res://shaders/enemy_flash.gdshader" id="3_pa2dr"]
 [ext_resource type="Texture2D" uid="uid://btmqink14vi7" path="res://Assets/Sprites/Enemy/Dark Enemy.png" id="3_rfug7"]
+[ext_resource type="Texture2D" uid="uid://b4kljp7yaym0f" path="res://Assets/Sprites/Enemy/EnemyHealthbar1Progress.png" id="6_042s1"]
 [ext_resource type="Texture2D" uid="uid://cts3vhojv7lqv" path="res://Assets/Sprites/Enemy/EnemyHealthbar1Lag.png" id="7_042s1"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_042s1"]
@@ -23,8 +23,8 @@ collision_layer = 4
 collision_mask = 11
 script = ExtResource("1_hghv2")
 damage_number_scene = ExtResource("2_0830c")
-flash_intensity = 0.7
-damage_bar_lag_duration = 0.7
+flash_intensity = 0.5
+damage_bar_lag_duration = 0.5
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 material = SubResource("ShaderMaterial_042s1")
@@ -36,16 +36,15 @@ position = Vector2(17.5, 18.5)
 shape = SubResource("RectangleShape2D_1f0kj")
 
 [node name="HealthBar" type="TextureProgressBar" parent="."]
-z_index = -2
+z_index = 2
 offset_left = 13.0
 offset_top = -8.0
 offset_right = 46.193665
 offset_bottom = 32.0
 scale = Vector2(0.45189348, 0.39640105)
-step = 10.0
 value = 100.0
 texture_under = ExtResource("3_287tu")
-texture_progress = ExtResource("3_afpow")
+texture_progress = ExtResource("6_042s1")
 
 [node name="DamageBar" type="TextureProgressBar" parent="HealthBar"]
 z_index = -1

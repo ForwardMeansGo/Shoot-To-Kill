@@ -1,27 +1,56 @@
-[gd_scene load_steps=19 format=3 uid="uid://bfwdbdyqwvha"]
+[gd_scene load_steps=33 format=3 uid="uid://bfwdbdyqwvha"]
 
 [ext_resource type="Script" uid="uid://drjjsaa5rp213" path="res://Scripts/player.gd" id="1_cvnsp"]
+[ext_resource type="Texture2D" uid="uid://bgcchtio0vxpo" path="res://Assets/Sprites/Player/Hood Knight Jump COLOURED-Sheet.png" id="2_3smsa"]
 [ext_resource type="PackedScene" uid="uid://duh7q7p0edxka" path="res://Scenes/gun.tscn" id="2_cvnsp"]
+[ext_resource type="Texture2D" uid="uid://sxkwl11yyi5r" path="res://Assets/Sprites/Player/Hood Knight Idle-Sheet NO ARM.png" id="3_3smsa"]
 [ext_resource type="Script" uid="uid://pyeik4e8yata" path="res://Scripts/camera_2d.gd" id="3_6t5aa"]
 [ext_resource type="Texture2D" uid="uid://dey2gmvr4o8a7" path="res://Assets/Sprites/Player/Revolver Hand.png" id="5_3smsa"]
-[ext_resource type="Texture2D" uid="uid://dk0vjauy5ss6u" path="res://Assets/Sprites/Player/Hood Knight Idle-Sheet.png" id="5_x3wgy"]
 [ext_resource type="Texture2D" uid="uid://ch403cm7rry4p" path="res://Assets/Sprites/Player/Hood Knight Run COLOURED NO LEFT ARM-Sheet.png" id="6_3smsa"]
 
+[sub_resource type="AtlasTexture" id="AtlasTexture_wpjfl"]
+atlas = ExtResource("2_3smsa")
+region = Rect2(128, 0, 32, 38)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_bi64h"]
+atlas = ExtResource("2_3smsa")
+region = Rect2(160, 0, 32, 38)
+
 [sub_resource type="AtlasTexture" id="AtlasTexture_8erm5"]
-atlas = ExtResource("5_x3wgy")
+atlas = ExtResource("3_3smsa")
 region = Rect2(0, 0, 32, 36)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_f1ek2"]
-atlas = ExtResource("5_x3wgy")
+atlas = ExtResource("3_3smsa")
 region = Rect2(32, 0, 32, 36)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_tx1dd"]
-atlas = ExtResource("5_x3wgy")
+atlas = ExtResource("3_3smsa")
 region = Rect2(64, 0, 32, 36)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_gymyn"]
-atlas = ExtResource("5_x3wgy")
+atlas = ExtResource("3_3smsa")
 region = Rect2(96, 0, 32, 36)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_2ijsl"]
+atlas = ExtResource("2_3smsa")
+region = Rect2(0, 0, 32, 38)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_p1odr"]
+atlas = ExtResource("2_3smsa")
+region = Rect2(32, 0, 32, 38)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_0gysh"]
+atlas = ExtResource("2_3smsa")
+region = Rect2(64, 0, 32, 38)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_vfarp"]
+atlas = ExtResource("2_3smsa")
+region = Rect2(96, 0, 32, 38)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_y6uwr"]
+atlas = ExtResource("2_3smsa")
+region = Rect2(192, 0, 32, 38)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_pu2lt"]
 atlas = ExtResource("6_3smsa")
@@ -47,8 +76,43 @@ region = Rect2(128, 0, 32, 36)
 atlas = ExtResource("6_3smsa")
 region = Rect2(160, 0, 32, 36)
 
+[sub_resource type="AtlasTexture" id="AtlasTexture_x3wgy"]
+atlas = ExtResource("6_3smsa")
+region = Rect2(160, 0, 32, 36)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_3smsa"]
+atlas = ExtResource("6_3smsa")
+region = Rect2(128, 0, 32, 36)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_igrcy"]
+atlas = ExtResource("6_3smsa")
+region = Rect2(96, 0, 32, 36)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_fs7ks"]
+atlas = ExtResource("6_3smsa")
+region = Rect2(64, 0, 32, 36)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_l6n3p"]
+atlas = ExtResource("6_3smsa")
+region = Rect2(32, 0, 32, 36)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_olqyp"]
+atlas = ExtResource("6_3smsa")
+region = Rect2(0, 0, 32, 36)
+
 [sub_resource type="SpriteFrames" id="SpriteFrames_igrcy"]
 animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_wpjfl")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_bi64h")
+}],
+"loop": true,
+"name": &"fall",
+"speed": 10.0
+}, {
 "frames": [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_8erm5")
@@ -65,6 +129,31 @@ animations = [{
 "loop": true,
 "name": &"idle",
 "speed": 7.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_2ijsl")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_p1odr")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_0gysh")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_vfarp")
+}],
+"loop": false,
+"name": &"jump",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_y6uwr")
+}],
+"loop": false,
+"name": &"land",
+"speed": 10.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -88,6 +177,29 @@ animations = [{
 "loop": true,
 "name": &"run",
 "speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_x3wgy")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_3smsa")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_igrcy")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_fs7ks")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_l6n3p")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_olqyp")
+}],
+"loop": true,
+"name": &"run_backwards",
+"speed": 10.0
 }]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_v0iea"]
@@ -100,7 +212,7 @@ script = ExtResource("1_cvnsp")
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
 position = Vector2(0, 5)
 sprite_frames = SubResource("SpriteFrames_igrcy")
-animation = &"idle"
+animation = &"run"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 position = Vector2(0, 7.0108814)
@@ -110,10 +222,12 @@ shape = SubResource("RectangleShape2D_v0iea")
 [node name="WeaponHolder" type="Node2D" parent="."]
 position = Vector2(6, -1)
 
-[node name="Gun" parent="WeaponHolder" instance=ExtResource("2_cvnsp")]
+[node name="WeaponBobOffset" type="Node2D" parent="WeaponHolder"]
+
+[node name="Gun" parent="WeaponHolder/WeaponBobOffset" instance=ExtResource("2_cvnsp")]
 position = Vector2(-1, 4)
 
-[node name="ArmSprite" type="Sprite2D" parent="WeaponHolder"]
+[node name="ArmSprite" type="Sprite2D" parent="WeaponHolder/WeaponBobOffset"]
 position = Vector2(-10, 8)
 texture = ExtResource("5_3smsa")
 

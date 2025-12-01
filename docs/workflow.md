@@ -171,15 +171,22 @@ This produces:
 
 ---
 
-# ✔ Summary
+# Summary
 
-Your workflow is:
+The workflow is:
 
 1. **Talk to ChatGPT** for design, debugging, and instructions.
 2. **Follow engine steps in Godot** for non-script tasks.
 3. **Paste Cursor prompts** for script changes.
 4. **Test in Godot**.
 
+This is for CHATGPT to follow:
+
+1. Ewan asks question
+2. ChatGPT replies
+2.A If changes required in GoDot, ChatGPT provides step by step, detailed instructions for Ewan to follow to action these changes
+2.B If a script change is required ChatGPT ALWAYS provide a cursor prompt for ewan to give cursor to safely implement these changes/update the script
+3. Ewan Tests in GoDot and gives the goahead if the change has been successful/behaves as expected
 That’s the full development pipeline.
 
 ---

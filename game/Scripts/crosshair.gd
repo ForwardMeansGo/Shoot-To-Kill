@@ -12,7 +12,7 @@ var dot_screen_pos: Vector2 = Vector2.ZERO
 func _ready() -> void:
 	if player_path != NodePath(""):
 		player = get_node(player_path)
-	
+
 	var mouse_screen: Vector2 = get_viewport().get_mouse_position()
 	dot_screen_pos = mouse_screen
 

@@ -32,9 +32,10 @@
 ## UI / UX
 - [x] Player health bar
 - [ ] Ammo counter
-- [ ] Crosshair
+- [x] Crosshair
 - [ ] Pause menu
 - [ ] Main menu
+- [ ] Shop
 
 ## AI
 - [ ] Better enemy pathfinding

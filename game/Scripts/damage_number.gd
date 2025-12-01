@@ -2,7 +2,7 @@ extends Node2D
 
 @export var normal_color: Color = Color.WHITE
 @export var crit_color: Color = Color(1.0, 1.0, 0.2) # yellow-ish
-@export var kill_color: Color = Color(0.614, 0.088, 0.0, 1.0) # red-ish
+@export var kill_color: Color = Color(0.692, 0.105, 0.0, 1.0) # red-ish
 
 @export var damage: int = 0
 @export var lifetime: float = 0.3
