@@ -14,9 +14,11 @@ const GRAVITY: float = 1200.0
 
 @export var max_health: int = 100
 @export var invulnerability_time: float = 0.5
+@export var starting_gold: float = 0.0
 
 signal health_changed(current_health: int, max_health: int)
 signal died
+signal gold_changed(current_gold: float)
 
 var weapon_base_offset: Vector2
 var current_health: int
@@ -25,6 +27,7 @@ var default_aim_dot_lerp_speed: float = 10.0
 var facing_dir: int = 1  # +1 = facing right, -1 = facing left
 var was_on_floor: bool = true
 var is_landing: bool = false
+var gold: float = 0.0
 
 # Per-frame weapon bob offsets for different animations (tweak these values in code as needed)
 var weapon_bob_idle := [0.0, 1.0, 1.0, 0.0]
@@ -32,19 +35,34 @@ var weapon_bob_run := [0.0, 0.0, -2.0, 0.0, 0.0, -1.0]
 var weapon_bob_run_backwards := [-1.0, 0.0, 0.0, -2.0, 0.0, 0.0]
 var weapon_bob_jump := [0.0, -1.0, -2.0, -1.0]  # basic jump bob, optional
 
+# Visual weapon kickback (purely cosmetic)
+var kick_offset: Vector2 = Vector2.ZERO
+@export var kick_strength: float = 4.0
+@export var kick_return_speed: float = 20.0
+
 func _ready() -> void:
 	weapon_base_offset = weapon_holder.position
+
+	# Add player to group for coin pickup detection
+	add_to_group("player")
 
 	# Hide system mouse cursor
 	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
 
-	# Connect weapon fired signal -> camera shake
+	# Connect weapon fired signal -> camera shake and crosshair pulse
 	if gun != null and gun.has_signal("fired"):
 		gun.connect("fired", Callable(self, "_on_weapon_fired"))
-	
+
+		if crosshair != null and crosshair.has_method("on_weapon_fired"):
+			gun.connect("fired", Callable(crosshair, "on_weapon_fired"))
+
 	# Initialize health
 	current_health = max_health
 	emit_signal("health_changed", current_health, max_health)
+
+	# Initialize gold
+	gold = starting_gold
+	emit_signal("gold_changed", gold)
 
 func _physics_process(delta: float) -> void:
 	# Gravity
@@ -134,8 +152,14 @@ func _process(delta: float) -> void:
 		if Input.is_action_just_pressed("shoot"):
 			if gun.has_method("try_shoot"):
 				gun.try_shoot(aim_point)
+
+				# VISUAL KICKBACK: push the weapon back along the shot direction
+				var shot_dir: Vector2 = (aim_point - get_aim_origin_global()).normalized()
+				if shot_dir.length() > 0.0:
+					kick_offset = shot_dir * -kick_strength
 	
-	# Update weapon bob based on current animation and frame
+	# Update visual weapon kickback, then bob
+	_update_kickback(delta)
 	_update_weapon_bob()
 
 func _update_animation() -> void:
@@ -212,10 +236,15 @@ func _update_weapon_bob() -> void:
 	if weapon_bob_offset == null:
 		return
 
-	var bob_y := _get_weapon_bob_for_current_frame()
-	var pos: Vector2 = weapon_bob_offset.position
-	pos.y = bob_y
-	weapon_bob_offset.position = pos
+	var bob_y: float = _get_weapon_bob_for_current_frame()
+	# Base bob position (local to WeaponHolder)
+	var base_pos: Vector2 = Vector2(0.0, bob_y)
+	# Add visual kickback offset on top
+	weapon_bob_offset.position = base_pos + kick_offset
+
+func _update_kickback(delta: float) -> void:
+	# Smoothly return kick_offset back to zero
+	kick_offset = kick_offset.lerp(Vector2.ZERO, kick_return_speed * delta)
 
 func _update_arm_visual_flip() -> void:
 	if arm_sprite == null:
@@ -260,3 +289,8 @@ func die() -> void:
 	emit_signal("died")
 	print("Player died, reloading scene...")
 	get_tree().reload_current_scene()
+
+func add_gold(amount: float) -> void:
+	gold += amount
+	emit_signal("gold_changed", gold)
+	print("Player picked up gold: ", amount, " -> total gold: ", gold)

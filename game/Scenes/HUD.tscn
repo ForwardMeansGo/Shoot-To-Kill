@@ -9,8 +9,10 @@ script = ExtResource("3_psnte")
 
 [node name="PlayerHealthBar" type="TextureProgressBar" parent="."]
 z_index = 10
-offset_right = 195.93741
-offset_bottom = 64.0
+offset_left = 21.0
+offset_top = 1.0
+offset_right = 87.0
+offset_bottom = 65.0
 scale = Vector2(3.1591723, 2.7712262)
 size_flags_vertical = 4
 value = 100.0

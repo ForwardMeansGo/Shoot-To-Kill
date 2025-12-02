@@ -1,10 +1,12 @@
-[gd_scene load_steps=11 format=3 uid="uid://b24ka108g6bnw"]
+[gd_scene load_steps=13 format=3 uid="uid://b24ka108g6bnw"]
 
 [ext_resource type="Script" uid="uid://duycd31rxckwt" path="res://Scripts/enemies/enemy.gd" id="1_hghv2"]
 [ext_resource type="PackedScene" uid="uid://deefc1di02kvu" path="res://Scenes/damage_number.tscn" id="2_0830c"]
 [ext_resource type="Texture2D" uid="uid://dsfvqaytjsgf5" path="res://Assets/Sprites/Enemy/EnemyHealthbar1Background.png" id="3_287tu"]
+[ext_resource type="PackedScene" uid="uid://ck4wmvq405076" path="res://Scenes/CoinSilver.tscn" id="3_kf507"]
 [ext_resource type="Shader" uid="uid://n3mvtfwlowtt" path="res://shaders/enemy_flash.gdshader" id="3_pa2dr"]
 [ext_resource type="Texture2D" uid="uid://btmqink14vi7" path="res://Assets/Sprites/Enemy/Dark Enemy.png" id="3_rfug7"]
+[ext_resource type="PackedScene" uid="uid://c1nrxhtbohp7f" path="res://Scenes/CoinGold.tscn" id="4_feubr"]
 [ext_resource type="Texture2D" uid="uid://b4kljp7yaym0f" path="res://Assets/Sprites/Enemy/EnemyHealthbar1Progress.png" id="6_042s1"]
 [ext_resource type="Texture2D" uid="uid://cts3vhojv7lqv" path="res://Assets/Sprites/Enemy/EnemyHealthbar1Lag.png" id="7_042s1"]
 
@@ -23,8 +25,12 @@ collision_layer = 4
 collision_mask = 11
 script = ExtResource("1_hghv2")
 damage_number_scene = ExtResource("2_0830c")
-flash_intensity = 0.5
+flash_intensity = 0.8
 damage_bar_lag_duration = 0.5
+silver_coin_scene = ExtResource("3_kf507")
+gold_coin_scene = ExtResource("4_feubr")
+silver_drop_chance = 0.8
+gold_drop_chance = 0.5
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 material = SubResource("ShaderMaterial_042s1")

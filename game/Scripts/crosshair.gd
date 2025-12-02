@@ -6,8 +6,13 @@ var default_dot_lerp_speed: float = 10.0
 @onready var outer_sprite: Sprite2D = $Outer
 @onready var dot_sprite: Sprite2D = $Dot
 
+@export var outer_pulse_scale: float = 1.25
+@export var outer_pulse_duration: float = 0.08
+
 var player: Node = null
 var dot_screen_pos: Vector2 = Vector2.ZERO
+var outer_base_scale: Vector2 = Vector2.ONE
+var outer_pulse_tween: Tween
 
 func _ready() -> void:
 	if player_path != NodePath(""):
@@ -15,6 +20,10 @@ func _ready() -> void:
 
 	var mouse_screen: Vector2 = get_viewport().get_mouse_position()
 	dot_screen_pos = mouse_screen
+
+	# Store the base scale of the outer crosshair so we can pulse around it
+	if outer_sprite != null:
+		outer_base_scale = outer_sprite.scale
 
 func _process(delta: float) -> void:
 	var mouse_world: Vector2 = get_global_mouse_position()
@@ -40,3 +49,24 @@ func _process(delta: float) -> void:
 
 func get_dot_world_position() -> Vector2:
 	return dot_sprite.global_position
+
+func on_weapon_fired(strength: float, duration: float) -> void:
+	# Pulse the outer crosshair scale when a shot is actually fired
+	if outer_sprite == null:
+		return
+
+	# Kill any previous tween so they don't fight each other
+	if outer_pulse_tween and outer_pulse_tween.is_valid():
+		outer_pulse_tween.kill()
+
+	# Start from the base scale, instantly pop to a larger size,
+	# then tween back down to the base scale.
+	outer_sprite.scale = outer_base_scale * outer_pulse_scale
+
+	outer_pulse_tween = create_tween()
+	outer_pulse_tween.tween_property(
+		outer_sprite,
+		"scale",
+		outer_base_scale,
+		outer_pulse_duration
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)

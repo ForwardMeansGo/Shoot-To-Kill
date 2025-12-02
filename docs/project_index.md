@@ -14,6 +14,8 @@ Core gameplay pillars:
 - Weighted aim dot system with per-weapon smoothing
 - Arm and gun aiming system with per-facing offsets
 - Enemy damage lag bar system
+- Visual weapon kickback system
+- Custom crosshair replacing OS mouse cursor
 
 Current dev focus: **Combat polish + enemy interactions**
 
@@ -30,7 +32,21 @@ Current dev focus: **Combat polish + enemy interactions**
 - Animation logic in `_update_animation()` helper function.
 - Called from `_physics_process()` after `move_and_slide()`.
 - "run" animation plays when moving horizontally on floor.
-- "idle" animation plays when not moving or in the air.
+- "idle" animation plays when when on floor and not moving.
+- "jump" animation plays while ascending.
+- "fall" animation plays while descending.
+- "land" animation plays once when hitting the floor.
+- "run_backwards" animation plays when moving opposite to facing direction.
+
+### Weapon Bob & Kickback
+- **Weapon Bob**: Per-frame vertical offsets synced with player animations (idle, run, run_backwards, jump/fall).
+- Bob values stored in arrays matching animation frames.
+- Applied to `WeaponBobOffset` node each frame.
+- **Visual Kickback**: Purely cosmetic weapon/arm movement backward along shot direction on firing.
+- Kickback smoothly returns to zero over time.
+- Configurable `kick_strength` (default 4.0) and `kick_return_speed` (default 20.0).
+- Kickback combines with weapon bob for layered visual effect.
+- Landing animation does not currently apply a bob offset (to be implemented).
 
 ### Gun Aiming & Facing
 - Weighted aim dot system: crosshair dot lags behind mouse with configurable smoothing.
@@ -41,12 +57,15 @@ Current dev focus: **Combat polish + enemy interactions**
 - Weapon flips vertically using `set_facing_left()`.
 - Player sprite flips horizontally using sprite scale.
 - Weapon holder position shifts left/right depending on mouse direction.
+- OS mouse cursor is hidden; crosshair follows mouse position every frame.
+- Visual weapon kickback: gun/arm moves backward along shot direction on firing (purely cosmetic).
 
 ### Shooting
 - Driven from `player.gd`.
 - Pistol fires with `Input.is_action_just_pressed("shoot")`.
 - Semi-auto: 1 bullet per click.
 - Calls `gun.try_shoot(aim_point)` using weighted dot position (not raw mouse).
+- Visual kickback: weapon/arm moves backward along shot direction on firing (purely cosmetic, does not affect aim).
 
 ### Camera
 - `Camera2D` with shake system.
@@ -316,6 +335,7 @@ Current dev focus: **Combat polish + enemy interactions**
 - Converts smoothed screen position back to world space using canvas transform.
 - Per-weapon smoothing speed via `weapon_base.gd.aim_dot_lerp_speed`.
 - Player aims gun and arm at `crosshair.get_dot_world_position()`.
+- **Mouse Cursor Replacement**: OS mouse cursor is hidden; crosshair root follows mouse position each frame to replace system cursor.
 
 ## Key Files
 ### Scenes

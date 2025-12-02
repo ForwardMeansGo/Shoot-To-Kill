@@ -11,7 +11,7 @@ shake_duration = 0.0
 aim_dot_lerp_speed = 15.0
 
 [node name="Muzzle" type="Marker2D" parent="."]
-position = Vector2(8, 0)
+position = Vector2(8, -1)
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 texture = ExtResource("2_t6ynv")

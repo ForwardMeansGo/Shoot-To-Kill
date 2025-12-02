@@ -88,14 +88,23 @@ Bullets use raycasting each frame to avoid tunneling.
 ### Animation
 - Animation logic consolidated in `_update_animation()` helper function.
 - Called from `_physics_process()` after `move_and_slide()`.
-- "run" animation plays when `abs(velocity.x) > 1.0` AND `is_on_floor()`.
-- "idle" animation plays when not moving OR in the air.
+- **Ground Movement**:
+  - "run" animation plays when `abs(velocity.x) > 1.0` AND `is_on_floor()`.
+  - "run_backwards" animation plays when moving opposite to facing direction.
+  - "idle" animation plays when not moving on ground.
+- **Air Movement**:
+  - "jump" animation plays while ascending (`velocity.y < 0.0`).
+  - "fall" animation plays while descending (`velocity.y >= 0.0`).
+- **Landing**:
+  - "land" animation plays once when transitioning from air to floor.
+  - Landing state tracked with `was_on_floor` and `is_landing` flags.
+  - Landing animation must finish before returning to normal animation logic.
 - No animation logic in `_process()`.
 
 ### Aiming System
 - **Weighted Aim Dot**: Player aims at `crosshair.get_dot_world_position()` instead of raw mouse.
 - **Arm and Gun Aiming**:
-  - Arm sprite (`$WeaponHolder/ArmSprite`) rotates independently toward aim point.
+  - Arm sprite (`$WeaponHolder/WeaponBobOffset/ArmSprite`) rotates independently toward aim point.
   - Gun positioned relative to arm using `hand_offset` rotated by arm rotation.
   - Per-facing offsets for weapon holder position and gun hand offset.
   - Arm visual flip helper prevents upside-down appearance when aiming across top.
@@ -106,6 +115,34 @@ Bullets use raycasting each frame to avoid tunneling.
   - Player references `$"../Crosshair"` node.
   - Gun and arm both aim at weighted dot position.
   - Shooting uses weighted dot position, not raw mouse.
+- **Mouse Cursor Replacement**:
+  - OS mouse cursor is hidden in `_ready()` using `Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)`.
+  - Crosshair root node follows mouse position each frame: `crosshair.global_position = mouse_pos`.
+  - Crosshair visually replaces the system cursor for better game immersion.
+
+### Weapon Bob System
+- **Per-Animation Bob Arrays**: Frame-by-frame vertical offsets stored in arrays:
+  - `weapon_bob_idle`: [0.0, 1.0, 1.0, 0.0]
+  - `weapon_bob_run`: [0.0, 0.0, -2.0, 0.0, 0.0, -1.0]
+  - `weapon_bob_run_backwards`: [-1.0, 0.0, 0.0, -2.0, 0.0, 0.0]
+  - `weapon_bob_jump`: [0.0, -1.0, -2.0, -1.0]
+- **Bob Application**:
+  - `_get_weapon_bob_for_current_frame()` retrieves offset based on current animation and frame.
+  - `_update_weapon_bob()` applies bob to `WeaponBobOffset` node position each frame.
+  - Bob values are local to `WeaponHolder` (Y-axis only).
+
+### Visual Weapon Kickback System
+- **Purely Cosmetic**: Kickback does not affect aim, recoil, crosshair, or animation behavior.
+- **Kickback Variables**:
+  - `kick_offset: Vector2` - Current kickback offset (starts at ZERO).
+  - `@export var kick_strength: float = 4.0` - How far the weapon moves back on firing.
+  - `@export var kick_return_speed: float = 20.0` - How quickly kickback returns to zero.
+- **Kickback Application**:
+  - On firing: Calculates shot direction from aim origin to aim point.
+  - Applies kickback impulse: `kick_offset = shot_dir * -kick_strength` (opposite to shot direction).
+  - `_update_kickback(delta)` smoothly lerps `kick_offset` back to `Vector2.ZERO` each frame.
+  - `_update_weapon_bob()` combines base bob position with `kick_offset` for final position.
+- **Layered Effect**: Kickback is added on top of weapon bob, creating a combined visual effect.
 
 ### Health
 - `max_health` exported (default 100).
@@ -326,6 +363,7 @@ On enemy hit:
 - Separate `Crosshair.tscn` scene (Node2D root).
 - Two child sprites: `Outer` (Sprite2D) and `Dot` (Sprite2D).
 - `crosshair.gd` script manages both sprites independently.
+- **Mouse Cursor Replacement**: OS mouse cursor is hidden; crosshair root follows mouse to replace system cursor.
 
 ### Outer Crosshair
 - Follows mouse instantly in world space.

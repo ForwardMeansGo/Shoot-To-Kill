@@ -10,6 +10,10 @@ extends CharacterBody2D
 @export var flash_duration: float = 0.09
 @export var flash_intensity: float = 1.0  # 0.0–1.0, how white the flash is
 @export var damage_bar_lag_duration: float = 0.2
+@export var silver_coin_scene: PackedScene
+@export var gold_coin_scene: PackedScene
+@export_range(0.0, 1.0, 0.01) var silver_drop_chance: float = 0.5
+@export_range(0.0, 1.0, 0.01) var gold_drop_chance: float = 0.25
 
 enum State {
 	CHASE,
@@ -198,12 +202,22 @@ func _on_damage_area_body_exited(body: Node) -> void:
 		# Player is no longer in contact range; go back to chasing
 		state = State.CHASE
 
+func _drop_loot() -> void:
+	if silver_coin_scene != null and randf() < silver_drop_chance:
+		var c = silver_coin_scene.instantiate()
+		c.global_position = global_position
+		get_tree().current_scene.add_child(c)
+
+	if gold_coin_scene != null and randf() < gold_drop_chance:
+		var c = gold_coin_scene.instantiate()
+		c.global_position = global_position
+		get_tree().current_scene.add_child(c)
+
 func die() -> void:
 	# Prevent death logic from running multiple times
 	if state == State.DEAD:
 		return
 	
 	state = State.DEAD
-	
-	# Temporary placeholder: just remove the enemy
+	_drop_loot()
 	queue_free()

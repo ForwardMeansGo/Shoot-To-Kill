@@ -10,7 +10,7 @@
 ## Combat Feel / Juice
 - [x] Damage numbers with arc animation
 - [x] Critical hit styling (bigger, yellow)
-- [ ] Weapon recoil / gun kickback
+- [x] Weapon recoil / gun kickback
 - [ ] Muzzle flashes
 - [ ] Bullet impact particles (enemy/world)
 - [ ] Enemy hit particles / blood FX

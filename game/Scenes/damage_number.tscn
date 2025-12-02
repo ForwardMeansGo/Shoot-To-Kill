@@ -11,6 +11,8 @@ script = ExtResource("1_m808r")
 offset_right = 40.0
 offset_bottom = 40.0
 scale = Vector2(0.3199997, 0.3199997)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
 theme_override_fonts/normal_font = ExtResource("2_m808r")
 text = "10
 "
