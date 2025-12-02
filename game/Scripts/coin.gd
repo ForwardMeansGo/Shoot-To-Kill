@@ -87,7 +87,7 @@ func _on_body_entered(body: Node) -> void:
 
 		# Disable collision and hide the sprite so it feels instantly collected
 		if collision_shape:
-			collision_shape.disabled = true
+			collision_shape.set_deferred("disabled", true)
 		if sprite:
 			sprite.visible = false
 

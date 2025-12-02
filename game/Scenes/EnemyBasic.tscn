@@ -31,6 +31,7 @@ silver_coin_scene = ExtResource("3_kf507")
 gold_coin_scene = ExtResource("4_feubr")
 silver_drop_chance = 0.8
 gold_drop_chance = 0.5
+xp_reward = 5
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 material = SubResource("ShaderMaterial_042s1")

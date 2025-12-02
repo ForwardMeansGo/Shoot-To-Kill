@@ -157,11 +157,70 @@ Bullets use raycasting each frame to avoid tunneling.
   - Calls `die()` if health <= 0.
 - `die()`:
   - Emits `died` signal.
-  - Reloads current scene.
+  - Calls `GameManager.on_player_died()` to handle scene transition.
+  - Does NOT reload scene directly (GameManager handles transitions).
+
+### Gold Currency System
+- Gold is managed by `GameManager` singleton (not stored in player).
+- `add_gold(amount)`:
+  - Forwards gold to `GameManager.add_gold_run(amount)`.
+  - All gold is tracked centrally in GameManager.
+- Player is added to `"player"` group in `_ready()` for coin pickup detection.
 
 ### Signals
 - `health_changed(current_health, max_health)` - emitted on health change.
 - `died` - emitted when player dies.
+- `gold_changed(current_gold)` - legacy signal (kept for backward compatibility).
+
+---
+
+## GameManager System
+
+### Architecture
+- **Autoload Singleton**: Configured as AutoLoad in Project Settings (name: `GameManager`).
+- Centralized management for currency, XP/level, and scene transitions.
+
+### Currency Management
+- **Run Gold** (`gold_run: float`):
+  - Currently permanent (no reset on death).
+  - `add_gold_run(amount)`: Adds gold and emits `gold_run_changed` signal.
+  - `spend_gold_run(amount)`: Attempts to spend gold, returns success/failure.
+  - `reset_run_state()`: Resets run-only data (currently unused).
+- **Essence** (`essence_total: int`):
+  - Permanent currency kept between runs.
+  - `add_essence(amount)`: Adds essence and emits `essence_changed` signal.
+  - `spend_essence(amount)`: Attempts to spend essence, returns success/failure.
+
+### XP/Level System
+- **Variables**:
+  - `xp: int`: Current XP amount.
+  - `level: int`: Current player level (starts at 1).
+  - `base_xp_to_level` (export, default 100): Base XP required for first level.
+  - `xp_growth_factor` (export, default 1.4): Exponential growth multiplier.
+- **Level Calculation**:
+  - `get_xp_required_for_next_level()`: Calculates XP needed using exponential growth.
+  - Formula: `base_xp_to_level * pow(xp_growth_factor, level - 1)`
+  - Example progression: 100, 140, 196, 274, ...
+- **XP Addition**:
+  - `add_xp(amount)`: Adds XP and automatically handles level-ups.
+  - If XP exceeds required amount, level increases and excess XP is kept.
+  - Can level up multiple times in one call if enough XP is added.
+  - Emits `xp_changed(current_xp, current_level)` signal.
+  - Prints "LEVEL UP!" message when level increases.
+
+### Scene Management
+- **Scene Paths**:
+  - `TAVERN_SCENE_PATH`: `"res://Scenes/Tavern.tscn"`
+  - `RUN_SCENE_PATH`: `"res://Scenes/level_01.tscn"`
+- **Methods**:
+  - `go_to_tavern()`: Loads and transitions to Tavern scene.
+  - `start_new_run()`: Loads and transitions to run scene (starts new run).
+  - `on_player_died()`: Called on player death, transitions to Tavern.
+
+### Signals
+- `gold_run_changed(current_gold: float)` - emitted when run gold changes.
+- `essence_changed(current_essence: int)` - emitted when essence changes.
+- `xp_changed(current_xp: int, current_level: int)` - emitted when XP or level changes.
 
 ---
 
@@ -169,7 +228,7 @@ Bullets use raycasting each frame to avoid tunneling.
 
 ### Architecture
 - Separate `HUD.tscn` scene (CanvasLayer).
-- `hud.gd` script listens to Player signals.
+- `hud.gd` script listens to Player signals and GameManager signals.
 - No direct UI references in Player script.
 
 ### Health Bar
@@ -184,6 +243,24 @@ Bullets use raycasting each frame to avoid tunneling.
   - Kills existing tween before creating new one.
 - **Texture Requirements:**
   - Progress texture must only contain the fill bar, with no heart or frame. Background holds all decorative art. Use Progress Offset to align the fill.
+
+### Currency Panel
+- `CurrencyPanel` (HBoxContainer) with three display boxes:
+  - **GoldBox/GoldLabel**: Displays run gold from GameManager.
+    - Shows value with 1 decimal place precision (using `snapped()`).
+    - Updates via `_on_gold_run_changed(current_gold)` handler.
+  - **EssenceBox/EssenceLabel**: Displays permanent essence from GameManager.
+    - Shows integer value.
+    - Updates via `_on_essence_changed(current_essence)` handler.
+  - **XPBox/XPLabel**: Displays level and XP.
+    - Format: `"Lv %d  XP %d" % [current_level, current_xp]`
+    - Updates via `_on_xp_changed(current_xp, current_level)` handler.
+- **Signal Connections**:
+  - Connects to GameManager signals in `_ready()`:
+    - `GameManager.gold_run_changed` → `_on_gold_run_changed()`
+    - `GameManager.essence_changed` → `_on_essence_changed()`
+    - `GameManager.xp_changed` → `_on_xp_changed()`
+  - Initializes all labels from current GameManager state after connecting signals.
 
 ---
 
@@ -285,13 +362,27 @@ Enemies use a state-based system with three states:
 - `die()` function:
   - Prevents multiple death calls (returns if already `DEAD`).
   - Sets state to `DEAD`.
-  - Immediately calls `queue_free()` (temporary placeholder).
+  - Calls `_drop_loot()` to spawn coins.
+  - Awards XP via `GameManager.add_xp(xp_reward)` if `xp_reward > 0`.
+  - Immediately calls `queue_free()`.
+- **XP Reward**:
+  - `xp_reward` exported (default 10): XP granted when enemy dies.
+  - XP is added directly to GameManager, triggering level-ups automatically.
+  - HUD updates automatically via GameManager's `xp_changed` signal.
 - **Physics Skip on Death**:
   - When an enemy enters the `DEAD` state, `_physics_process()` exits immediately via early return.
   - This disables all gravity, movement, sliding, and contact damage ticking without needing to modify collision layers or disable DamageArea.
 - **Collision behaviour**:
   - Dead enemies do not interact with the player because the AI and physics code path is completely skipped while `DEAD`.
 - Dead enemies cannot take damage or deal contact damage.
+
+### Loot Drop System
+- `_drop_loot()` function:
+  - Spawns coins when enemy dies.
+  - Exported `silver_coin_scene` and `gold_coin_scene` (PackedScene).
+  - Exported `silver_drop_chance` (default 0.5) and `gold_drop_chance` (default 0.25).
+  - Each coin type has independent drop chance (can drop both, one, or neither).
+  - Coins spawn at enemy's `global_position` when dropped.
 
 ---
 
@@ -370,6 +461,20 @@ On enemy hit:
 - `outer_sprite.global_position = mouse_world` each frame.
 - Represents raw player input.
 
+### Outer Crosshair Pulse Effect
+- **Trigger**: Driven by weapon's `fired(strength, duration)` signal (not raw input).
+- **Behavior**: Outer crosshair briefly scales up when weapon fires, then smoothly returns to normal size.
+- **Implementation**:
+  - `on_weapon_fired(strength, duration)` method called by weapon signal.
+  - Stores base scale in `_ready()` as `outer_base_scale`.
+  - Instantly scales to `outer_base_scale * outer_pulse_scale` on fire.
+  - Tweens back to `outer_base_scale` over `outer_pulse_duration`.
+- **Exports**:
+  - `outer_pulse_scale`: float (default 1.25) - how much larger the crosshair grows.
+  - `outer_pulse_duration`: float (default 0.08s) - how long the return animation takes.
+- **Tween Settings**: Uses `TRANS_SINE` and `EASE_OUT` for smooth return.
+- **Signal Connection**: Player connects weapon's `fired` signal to `crosshair.on_weapon_fired()` in addition to camera shake.
+
 ### Weighted Aim Dot
 - Smoothly lags behind mouse using screen-space lerp.
 - **Screen-Space Smoothing**:
@@ -411,14 +516,101 @@ On enemy hit:
 
 ---
 
+## Coin System
+
+### Architecture
+- Lightweight pickup system using `Area2D` (no physics simulation).
+- Scene structure: Root `Area2D` with `AnimatedSprite2D`, `CollisionShape2D`, and optional `AudioStreamPlayer2D`.
+- Two coin types: Silver and Gold (separate scenes with different values).
+
+### Arc Motion Animation
+- **Spawn Behavior**: Coins animate along a parametric arc from spawn to landing position.
+- **Arc Parameters**:
+  - Random horizontal direction (left/right) and distance.
+  - Random vertical drop distance.
+  - Sine-based arc height for smooth curve.
+- **Animation**:
+  - Tween-based animation over `travel_time` (default 0.4s).
+  - Parametric `_t` value animates from 0.0 to 1.0.
+  - Horizontal: linear interpolation from start to end.
+  - Vertical: combines linear drop with sine-based arc (`-sin(_t * PI) * arc_height`).
+- **Exports**:
+  - `travel_time`: float (default 0.4s) - time for full arc animation.
+  - `min_horizontal_distance`: float (default 20.0)
+  - `max_horizontal_distance`: float (default 40.0)
+  - `min_vertical_drop`: float (default 8.0)
+  - `max_vertical_drop`: float (default 16.0)
+  - `arc_height`: float (default 25.0) - peak height of the arc.
+
+### Idle Bobbing
+- **After Landing**: Once arc completes, coins bob up and down in place.
+- **Implementation**: Uses sine wave with `_bob_time` accumulator.
+- **Exports**:
+  - `bob_height`: float (default 2.0) - vertical bobbing distance.
+  - `bob_speed`: float (default 4.0) - bobbing animation speed.
+
+### Player Detection
+- Uses `Area2D.body_entered` signal to detect player overlap.
+- **Parent/Child Handling**: Mirrors enemy contact damage pattern.
+  - If collider isn't in `"player"` group but parent is, uses parent.
+- **Pickup Behavior**:
+  - Calls `player.add_gold(value)` when collected.
+  - Player forwards gold to `GameManager.add_gold_run()`.
+  - Disables collision shape using `set_deferred("disabled", true)` to avoid physics errors.
+  - Hides sprite instantly for immediate visual feedback.
+  - Plays optional pickup sound, then frees after audio finishes.
+
+### Performance
+- Lightweight design: no RigidBody2D physics, only position updates in `_process()`.
+- Efficient for many coins on screen simultaneously.
+
+## Tavern System
+
+### Architecture
+- Hub scene where player returns after death.
+- Contains interaction areas for Bartender and RunDoor.
+- Uses "interact" input action (mapped to E key).
+
+### Bartender (`tavern_bartender.gd`)
+- **Node Structure**:
+  - Root: `Node2D`
+  - `InteractionArea` (Area2D): Detects player proximity.
+  - `PromptLabel` (Label): Shows/hides interaction prompt.
+- **Behavior**:
+  - Shows prompt when player enters interaction area.
+  - Hides prompt when player exits.
+  - Emits `interacted(player)` signal when player presses "interact".
+  - Generic implementation (no shop logic yet).
+
+### RunDoor (`tavern_run_door.gd`)
+- **Node Structure**:
+  - Root: `Node2D`
+  - `InteractionArea` (Area2D): Detects player proximity.
+  - `PromptLabel` (Label): Shows/hides interaction prompt.
+- **Behavior**:
+  - Shows prompt when player enters interaction area.
+  - Hides prompt when player exits.
+  - Emits `door_used(player)` signal when player presses "interact".
+  - RunDoor Calls `GameManager.start_new_run()` to load run scene.
+
+### Interaction Pattern
+- Both scripts use the same pattern:
+  - `_on_area_body_entered()`: Detects player, shows prompt, stores player reference.
+  - `_on_area_body_exited()`: Detects player exit, hides prompt, clears reference.
+  - `_process()`: Checks for "interact" input when player in range.
+  - Handles parent/child node relationships (same pattern as coins/enemies).
+
+---
+
 ## Collision System (Layers)
 - **1 – world**
 - **2 – player**
 - **3 – enemy**
 - **4 – bullet**
+- **7 – Interaction**
 
 **Player**
-- Layer: 2  
+- Layer: 2
 - Masks: 1, 3  
 
 **World**
@@ -431,6 +623,6 @@ On enemy hit:
 
 **Bullet**
 - Layer: 4  
-- Masks: 1, 3  
+- Masks: 1, 3 
 
 ---

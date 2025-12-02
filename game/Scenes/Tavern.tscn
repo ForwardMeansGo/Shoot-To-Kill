@@ -1,0 +1,99 @@
+[gd_scene load_steps=14 format=4 uid="uid://bqygnbemul856"]
+
+[ext_resource type="PackedScene" uid="uid://bfwdbdyqwvha" path="res://Scenes/player.tscn" id="1_w0j5r"]
+[ext_resource type="PackedScene" uid="uid://bgl3dadmuu1pk" path="res://Scenes/HUD.tscn" id="2_8ea0k"]
+[ext_resource type="PackedScene" uid="uid://chlljsxawrvdx" path="res://Scenes/crosshair.tscn" id="3_tpy25"]
+[ext_resource type="Texture2D" uid="uid://d4huyxawml7lx" path="res://Assets/Sprites/Tilesets/Demo World 1.png" id="4_rp73c"]
+[ext_resource type="Script" uid="uid://lhi200iah2rh" path="res://Scripts/tavern_bartender.gd" id="5_5ebr1"]
+[ext_resource type="Texture2D" uid="uid://3s03jx2tjhas" path="res://icon.svg" id="6_d72gp"]
+[ext_resource type="FontFile" uid="uid://dvvf0f0kdg8he" path="res://Assets/Font/windows_command_prompt.ttf" id="7_8kk68"]
+[ext_resource type="Script" uid="uid://cjx3a0nc6afid" path="res://Scripts/tavern_run_door.gd" id="8_hm7uq"]
+[ext_resource type="Texture2D" uid="uid://m167w3rpunal" path="res://Assets/Sprites/Enviroment/TavernLeaveDoor1.png" id="9_mm7un"]
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_vsbuj"]
+texture = ExtResource("4_rp73c")
+texture_region_size = Vector2i(32, 32)
+0:0/0 = 0
+0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+1:0/0 = 0
+1:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+2:0/0 = 0
+2:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+
+[sub_resource type="TileSet" id="TileSet_5ebr1"]
+tile_size = Vector2i(32, 32)
+physics_layer_0/collision_layer = 1
+physics_layer_0/collision_mask = 14
+sources/1 = SubResource("TileSetAtlasSource_vsbuj")
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_e5hc2"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_6ptpq"]
+size = Vector2(32, 32)
+
+[node name="Node2D" type="Node2D"]
+
+[node name="Player" parent="." instance=ExtResource("1_w0j5r")]
+position = Vector2(-526, -25)
+collision_mask = 13
+
+[node name="HUD" parent="." instance=ExtResource("2_8ea0k")]
+
+[node name="Crosshair" parent="." instance=ExtResource("3_tpy25")]
+position = Vector2(1, 0)
+player_path = NodePath("../Player")
+
+[node name="Terrain" type="TileMapLayer" parent="."]
+position = Vector2(-573, 1)
+tile_map_data = PackedByteArray("AAADAAAAAQAAAAAAAAACAAAAAQAAAAAAAAABAAAAAQAAAAAAAAAAAAAAAQAAAAAAAAAEAAAAAQAAAAAAAAAFAAAAAQAAAAAAAAAGAAAAAQAAAAAAAAD//wAAAQAAAAAAAAD+/wAAAQAAAAAAAAD9/wAAAQAAAAAAAAAHAAAAAQAAAAAAAAD9/wEAAQABAAAAAAD+/wEAAQABAAAAAAD//wEAAQABAAAAAAAAAAEAAQABAAAAAAABAAEAAQABAAAAAAACAAEAAQABAAAAAAADAAEAAQABAAAAAAAEAAEAAQABAAAAAAAFAAEAAQABAAAAAAAGAAEAAQABAAAAAAAHAAEAAQABAAAAAAD9/wIAAQABAAAAAAD+/wIAAQABAAAAAAD//wIAAQABAAAAAAAAAAIAAQABAAAAAAABAAIAAQABAAAAAAACAAIAAQABAAAAAAADAAIAAQABAAAAAAAEAAIAAQABAAAAAAAFAAIAAQABAAAAAAAGAAIAAQABAAAAAAAHAAIAAQABAAAAAAA=")
+tile_set = SubResource("TileSet_5ebr1")
+
+[node name="Bartender" type="Node2D" parent="."]
+z_index = -1
+position = Vector2(-447, -13)
+script = ExtResource("5_5ebr1")
+
+[node name="Sprite2D" type="Sprite2D" parent="Bartender"]
+scale = Vector2(0.14328645, 0.14328645)
+texture = ExtResource("6_d72gp")
+
+[node name="InteractionArea" type="Area2D" parent="Bartender"]
+collision_layer = 64
+collision_mask = 2
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Bartender/InteractionArea"]
+shape = SubResource("RectangleShape2D_e5hc2")
+
+[node name="PromptLabel" type="Label" parent="Bartender"]
+offset_left = -9.999998
+offset_top = -17.999998
+offset_right = 40.0
+offset_bottom = 5.000002
+scale = Vector2(0.46883082, 0.46883082)
+theme_override_fonts/font = ExtResource("7_8kk68")
+text = "E: Talk"
+
+[node name="RunDoor" type="Node2D" parent="."]
+z_index = -1
+position = Vector2(-384, -22)
+script = ExtResource("8_hm7uq")
+
+[node name="Sprite2D" type="Sprite2D" parent="RunDoor"]
+texture = ExtResource("9_mm7un")
+
+[node name="InteractionArea" type="Area2D" parent="RunDoor"]
+collision_layer = 64
+collision_mask = 2
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="RunDoor/InteractionArea"]
+position = Vector2(0, 7)
+shape = SubResource("RectangleShape2D_6ptpq")
+
+[node name="PromptLabel" type="Label" parent="RunDoor"]
+offset_left = -18.0
+offset_top = -30.0
+offset_right = 59.0
+offset_bottom = -7.0
+scale = Vector2(0.46883082, 0.46883082)
+theme_override_fonts/font = ExtResource("7_8kk68")
+text = "E: Start Run"

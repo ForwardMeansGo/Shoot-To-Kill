@@ -28,9 +28,11 @@ const GRAVITY: float = 1200.0
 
 @export var max_health: int = 100
 @export var invulnerability_time: float = 0.5
+@export var starting_gold: float = 0.0
 
 signal health_changed(current_health: int, max_health: int)
 signal died
+signal gold_changed(current_gold: float)
 
 var weapon_base_offset: Vector2
 var current_health: int
@@ -39,6 +41,7 @@ var default_aim_dot_lerp_speed: float = 10.0
 var facing_dir: int = 1  # +1 = facing right, -1 = facing left
 var was_on_floor: bool = true
 var is_landing: bool = false
+var gold: float = 0.0
 
 # Per-frame weapon bob offsets for different animations (tweak these values in code as needed)
 var weapon_bob_idle := [0.0, 1.0, 1.0, 0.0]
@@ -54,16 +57,26 @@ var kick_offset: Vector2 = Vector2.ZERO
 func _ready() -> void:
 	weapon_base_offset = weapon_holder.position
 
+	# Add player to group for coin pickup detection
+	add_to_group("player")
+
 	# Hide system mouse cursor
 	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
 
-	# Connect weapon fired signal -> camera shake
+	# Connect weapon fired signal -> camera shake and crosshair pulse
 	if gun != null and gun.has_signal("fired"):
 		gun.connect("fired", Callable(self, "_on_weapon_fired"))
-	
+
+		if crosshair != null and crosshair.has_method("on_weapon_fired"):
+			gun.connect("fired", Callable(crosshair, "on_weapon_fired"))
+
 	# Initialize health
 	current_health = max_health
 	emit_signal("health_changed", current_health, max_health)
+
+	# Initialize gold
+	gold = starting_gold
+	emit_signal("gold_changed", gold)
 
 func _physics_process(delta: float) -> void:
 	# Gravity
@@ -290,6 +303,11 @@ func die() -> void:
 	emit_signal("died")
 	print("Player died, reloading scene...")
 	get_tree().reload_current_scene()
+
+func add_gold(amount: float) -> void:
+	gold += amount
+	emit_signal("gold_changed", gold)
+	print("Player picked up gold: ", amount, " -> total gold: ", gold)
 ```
 
 ---
@@ -314,6 +332,10 @@ extends CharacterBody2D
 @export var flash_duration: float = 0.09
 @export var flash_intensity: float = 1.0  # 0.0–1.0, how white the flash is
 @export var damage_bar_lag_duration: float = 0.2
+@export var silver_coin_scene: PackedScene
+@export var gold_coin_scene: PackedScene
+@export_range(0.0, 1.0, 0.01) var silver_drop_chance: float = 0.5
+@export_range(0.0, 1.0, 0.01) var gold_drop_chance: float = 0.25
 
 enum State {
 	CHASE,
@@ -502,14 +524,24 @@ func _on_damage_area_body_exited(body: Node) -> void:
 		# Player is no longer in contact range; go back to chasing
 		state = State.CHASE
 
+func _drop_loot() -> void:
+	if silver_coin_scene != null and randf() < silver_drop_chance:
+		var c = silver_coin_scene.instantiate()
+		c.global_position = global_position
+		get_tree().current_scene.add_child(c)
+
+	if gold_coin_scene != null and randf() < gold_drop_chance:
+		var c = gold_coin_scene.instantiate()
+		c.global_position = global_position
+		get_tree().current_scene.add_child(c)
+
 func die() -> void:
 	# Prevent death logic from running multiple times
 	if state == State.DEAD:
 		return
 	
 	state = State.DEAD
-	
-	# Temporary placeholder: just remove the enemy
+	_drop_loot()
 	queue_free()
 ```
 
@@ -811,8 +843,13 @@ var default_dot_lerp_speed: float = 10.0
 @onready var outer_sprite: Sprite2D = $Outer
 @onready var dot_sprite: Sprite2D = $Dot
 
+@export var outer_pulse_scale: float = 1.25
+@export var outer_pulse_duration: float = 0.08
+
 var player: Node = null
 var dot_screen_pos: Vector2 = Vector2.ZERO
+var outer_base_scale: Vector2 = Vector2.ONE
+var outer_pulse_tween: Tween
 
 func _ready() -> void:
 	if player_path != NodePath(""):
@@ -820,6 +857,10 @@ func _ready() -> void:
 	
 	var mouse_screen: Vector2 = get_viewport().get_mouse_position()
 	dot_screen_pos = mouse_screen
+
+	# Store the base scale of the outer crosshair so we can pulse around it
+	if outer_sprite != null:
+		outer_base_scale = outer_sprite.scale
 
 func _process(delta: float) -> void:
 	var mouse_world: Vector2 = get_global_mouse_position()
@@ -845,6 +886,27 @@ func _process(delta: float) -> void:
 
 func get_dot_world_position() -> Vector2:
 	return dot_sprite.global_position
+
+func on_weapon_fired(strength: float, duration: float) -> void:
+	# Pulse the outer crosshair scale when a shot is actually fired
+	if outer_sprite == null:
+		return
+
+	# Kill any previous tween so they don't fight each other
+	if outer_pulse_tween and outer_pulse_tween.is_valid():
+		outer_pulse_tween.kill()
+
+	# Start from the base scale, instantly pop to a larger size,
+	# then tween back down to the base scale.
+	outer_sprite.scale = outer_base_scale * outer_pulse_scale
+
+	outer_pulse_tween = create_tween()
+	outer_pulse_tween.tween_property(
+		outer_sprite,
+		"scale",
+		outer_base_scale,
+		outer_pulse_duration
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 ```
 
 ---
@@ -989,6 +1051,117 @@ func _on_AutoFreeTimer_timeout() -> void:
 	queue_free()
 ```
 
+### `coin.gd`
+**Location:** `game/Scripts/coin.gd`  
+**Extends:** `Area2D`  
+**Function:** Coin pickup system with arc motion animation and idle bobbing.
+
+```gdscript
+extends Area2D
+
+@export var value: float = 1.0
+
+# Arc motion settings
+@export var travel_time: float = 0.4          # Time for the full arc
+@export var min_horizontal_distance: float = 20.0
+@export var max_horizontal_distance: float = 40.0
+@export var min_vertical_drop: float = 8.0    # How far down from spawn the coin ends
+@export var max_vertical_drop: float = 16.0
+@export var arc_height: float = 25.0          # How high the arc goes at the peak
+
+# Idle bobbing after landing
+@export var bob_height: float = 2.0
+@export var bob_speed: float = 4.0
+
+@onready var sprite: Node2D = $AnimatedSprite2D
+@onready var collision_shape: CollisionShape2D = $CollisionShape2D
+@onready var audio_player: AudioStreamPlayer2D = $PickupAudio
+
+var _picked_up: bool = false
+
+var _t: float = 0.0
+var _start_pos: Vector2
+var _end_offset: Vector2
+var _landing_pos: Vector2
+var _landed: bool = false
+var _bob_time: float = 0.0
+
+func _ready() -> void:
+	# Connect to body_entered so we can detect the player
+	if not body_entered.is_connected(_on_body_entered):
+		body_entered.connect(_on_body_entered)
+
+	# Initialize arc parameters
+	_start_pos = global_position
+
+	var dir_sign: float = 1.0 if randf() > 0.5 else -1.0
+	var horizontal_dist: float = randf_range(min_horizontal_distance, max_horizontal_distance)
+	var vertical_drop: float = randf_range(min_vertical_drop, max_vertical_drop)
+
+	_end_offset = Vector2(dir_sign * horizontal_dist, vertical_drop)
+	_landing_pos = _start_pos + _end_offset
+
+	# Animate _t from 0.0 to 1.0 over travel_time using a Tween
+	_t = 0.0
+	var tween := create_tween()
+	tween.tween_property(self, "_t", 1.0, travel_time).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_callback(_on_arc_finished)
+
+func _process(delta: float) -> void:
+	if _picked_up:
+		return
+
+	if not _landed:
+		# Arc motion: horizontal lerp + vertical sine-based arc
+		var x := _start_pos.x + _end_offset.x * _t
+		var linear_y := _start_pos.y + _end_offset.y * _t
+		var arc_y := -sin(_t * PI) * arc_height
+		global_position = Vector2(x, linear_y + arc_y)
+	else:
+		# Idle bobbing at landing position
+		_bob_time += delta * bob_speed
+		var bob_offset_y := sin(_bob_time) * bob_height
+		global_position = _landing_pos + Vector2(0.0, bob_offset_y)
+
+func _on_arc_finished() -> void:
+	_landed = true
+	# Snap exactly to landing position at the end of the tween
+	global_position = _landing_pos
+
+func _on_body_entered(body: Node) -> void:
+	if _picked_up:
+		return
+
+	var target: Node = body
+
+	# Mirror the parent-check pattern from enemy.gd
+	if not target.is_in_group("player") and target.get_parent() and target.get_parent().is_in_group("player"):
+		target = target.get_parent()
+
+	if target.is_in_group("player") and target.has_method("add_gold"):
+		_picked_up = true
+
+		# Give gold to the player
+		target.add_gold(value)
+
+		# Disable collision and hide the sprite so it feels instantly collected
+		if collision_shape:
+			collision_shape.set_deferred("disabled", true)
+		if sprite:
+			sprite.visible = false
+
+		# Play pickup sound if present, then free
+		if audio_player and audio_player.stream:
+			audio_player.play()
+			if not audio_player.finished.is_connected(_on_audio_finished):
+				audio_player.finished.connect(_on_audio_finished)
+		else:
+			queue_free()
+
+func _on_audio_finished() -> void:
+	queue_free()
+```
+
 ---
 
 ## Camera Scripts
@@ -1036,11 +1209,11 @@ func start_shake(strength: float = 4.0, duration: float = 0.1) -> void:
 
 This document contains all scripts in the Shoot To Kill project, organized by category:
 
-- **Player Scripts**: Player controller with movement, health, shooting, animation, and aiming
-- **Enemy Scripts**: Enemy AI with state machine, health, contact damage, flash effects, and health bars
+- **Player Scripts**: Player controller with movement, health, shooting, animation, aiming, and gold currency
+- **Enemy Scripts**: Enemy AI with state machine, health, contact damage, flash effects, health bars, and loot drops
 - **Weapon Scripts**: Base weapon class, pistol implementation, and bullet physics
-- **UI Scripts**: HUD manager and crosshair system
-- **Effect Scripts**: Damage numbers, hit impacts, and blood effects
+- **UI Scripts**: HUD manager and crosshair system with outer pulse effect
+- **Effect Scripts**: Damage numbers, hit impacts, blood effects, and coin pickups
 - **Camera Scripts**: Camera shake system
 
 All scripts are current as of the latest project state.

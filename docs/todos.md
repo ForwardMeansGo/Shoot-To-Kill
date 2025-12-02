@@ -46,5 +46,6 @@
 - [ ] Elemental weapons/effects (fire/ice/poison)
 - [ ] Armor + resistances
 - [ ] Gear system (crit chance buffs, reload speed, movement boosts)
+- [ ] Online Multiplayer
 - [ ] Coop mechanics
 - [ ] Story integration

@@ -46,21 +46,50 @@ Shoot-To-Kill
     │               Demo World 1.png
     │               Demo World 1.aseprite
     │
+    ├── Assets
+    │   ├── Font
+    │   ├── Sounds
+    │   │       Coin Pickup.mp3
+    │   │       Money Bag Pickup.mp3
+    │   │       Shop Purchase.mp3
+    │   │       pistol_shot.mp3
+    │   │
+    │   └── Sprites
+    │       ├── Enemy
+    │       ├── Guns
+    │       │       Demo AK.png
+    │       │       Demo Bullet.png
+    │       │       Demo Bullet2.png
+    │       │       Demo Bullet3.png
+    │       │       Demo Pistol.png
+    │       ├── Pickups
+    │       │       (coin sprites)
+    │       ├── Player
+    │       └── Tilesets
+    │
     ├── Scenes
     │       bullet.tscn
+    │       CoinGold.tscn
+    │       CoinSilver.tscn
+    │       crosshair.tscn
     │       damage_number.tscn
     │       EnemyBasic.tscn
     │       gun.tscn
     │       HUD.tscn
     │       level_01.tscn
     │       player.tscn
+    │       Tavern.tscn
     │
     └── Scripts
-        │   bullet.gd
         │   camera_2d.gd
+        │   coin.gd
+        │   crosshair.gd
         │   damage_number.gd
+        │   game_manager.gd
         │   hud.gd
         │   player.gd
+        │   tavern_bartender.gd
+        │   tavern_run_door.gd
         │
         ├── enemies
         │       enemy.gd

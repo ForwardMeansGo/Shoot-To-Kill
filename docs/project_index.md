@@ -15,7 +15,13 @@ Core gameplay pillars:
 - Arm and gun aiming system with per-facing offsets
 - Enemy damage lag bar system
 - Visual weapon kickback system
-- Custom crosshair replacing OS mouse cursor
+- Custom crosshair replacing OS mouse cursor with outer crosshair pulse on weapon fire
+- Centralized GameManager singleton for currency, XP, and scene management
+- Gold and Essence currency systems
+- XP/Level progression system
+- Coin pickup system with arc motion and idle bobbing
+- Tavern hub with interaction system
+- Scene management (death → tavern, door → new run)
 
 Current dev focus: **Combat polish + enemy interactions**
 
@@ -83,10 +89,19 @@ Current dev focus: **Combat polish + enemy interactions**
   - Calls `die()` if health <= 0.
 - `die()`:
   - Emits `died` signal.
-  - Reloads current scene.
+  - Calls `GameManager.on_player_died()` to handle scene transition.
+  - Does NOT reload scene directly (GameManager handles transitions).
 - Signals:
   - `health_changed(current_health, max_health)` - emitted when health changes.
   - `died` - emitted when player dies.
+  - `gold_changed(current_gold)` - legacy signal (kept for backward compatibility).
+
+### Gold Currency System
+- Gold is managed by `GameManager` singleton (not stored in player).
+- `add_gold(amount)`:
+  - Forwards gold to `GameManager.add_gold_run(amount)`.
+  - All gold is tracked centrally in GameManager.
+- Player is added to `"player"` group in `_ready()` for coin pickup detection.
 
 ---
 
@@ -223,13 +238,26 @@ Current dev focus: **Combat polish + enemy interactions**
 - `die()` function:
   - Prevents multiple calls (checks `DEAD` state).
   - Sets state to `DEAD`.
-  - Immediately calls `queue_free()` (temporary placeholder).
+  - Calls `_drop_loot()` to spawn coins.
+  - Awards XP via `GameManager.add_xp(xp_reward)` if `xp_reward > 0`.
+  - Immediately calls `queue_free()`.
+- **XP Reward**:
+  - `xp_reward` exported (default 10): XP granted when enemy dies.
+  - XP is added directly to GameManager, triggering level-ups automatically.
 - **Physics Skip on Death**:
   - When an enemy enters the `DEAD` state, `_physics_process()` exits immediately via early return.
   - This disables all gravity, movement, sliding, and contact damage ticking without needing to modify collision layers or disable DamageArea.
 - **Collision behaviour**:
   - Dead enemies do not interact with the player because the AI and physics code path is completely skipped while `DEAD`.
 - Dead enemies cannot take damage or deal contact damage.
+
+### Loot Drop System
+- `_drop_loot()` function:
+  - Spawns coins when enemy dies.
+  - Exported `silver_coin_scene` and `gold_coin_scene` (PackedScene).
+  - Exported `silver_drop_chance` (default 0.5) and `gold_drop_chance` (default 0.25).
+  - Each coin type has independent drop chance (can drop both, one, or neither).
+  - Coins spawn at enemy's `global_position` when dropped.
 
 ### Group
 - Enemy registers in `"enemy"` group.
@@ -270,19 +298,52 @@ Current dev focus: **Combat polish + enemy interactions**
 
 ---
 
+## GameManager System (`game_manager.gd`)
+- **Autoload Singleton**: Configured as AutoLoad in Project Settings.
+- **Centralized Currency Management**:
+  - `gold_run` (float): Run-only currency (currently permanent, no reset on death).
+  - `essence_total` (int): Permanent currency kept between runs.
+- **XP/Level System**:
+  - `xp` (int): Current XP amount.
+  - `level` (int): Current player level.
+  - `base_xp_to_level` (export, default 100): Base XP required for first level.
+  - `xp_growth_factor` (export, default 1.4): Exponential growth multiplier.
+  - `get_xp_required_for_next_level()`: Calculates XP needed for next level.
+  - `add_xp(amount)`: Adds XP and handles level-ups automatically.
+- **Signals**:
+  - `gold_run_changed(current_gold: float)` - emitted when run gold changes.
+  - `essence_changed(current_essence: int)` - emitted when essence changes.
+  - `xp_changed(current_xp: int, current_level: int)` - emitted when XP or level changes.
+- **Scene Management**:
+  - `TAVERN_SCENE_PATH`: Path to Tavern scene (`res://Scenes/Tavern.tscn`).
+  - `RUN_SCENE_PATH`: Path to run scene (`res://Scenes/level_01.tscn`).
+  - `go_to_tavern()`: Transitions to Tavern scene.
+  - `start_new_run()`: Transitions to run scene (starts new run).
+  - `on_player_died()`: Called on player death, transitions to Tavern.
+  - `reset_run_state()`: Resets run-only data (currently unused, gold is permanent).
+
 ## HUD System (`hud.gd`)
 - Separate CanvasLayer scene (`HUD.tscn`).
 - The HUD is separated from the Player and loaded into the level as its own scene. It listens to the Player via signals and does not live inside the Player.tscn hierarchy.
-- Listens to Player's `health_changed` signal.
 - **Player Health Bar**
   - `PlayerHealthBar` (TextureProgressBar) child node.
   - Finds Player via `player_path` export or as sibling.
-  - Connects to `health_changed` signal in `_ready()`.
+  - Connects to Player's `health_changed` signal in `_ready()`.
   - Initializes from Player's current health values.
   - Smooth tweening:
     - Uses `hp_tween` to animate value changes.
     - 0.15s duration with `TRANS_SINE` and `EASE_OUT`.
     - Kills existing tween before creating new one.
+- **Currency Panel**
+  - `CurrencyPanel` (HBoxContainer) with three boxes:
+    - `GoldBox/GoldLabel`: Displays run gold from GameManager (1 decimal place).
+    - `EssenceBox/EssenceLabel`: Displays permanent essence from GameManager.
+    - `XPBox/XPLabel`: Displays level and XP in format "Lv X  XP Y".
+  - Connects to GameManager signals in `_ready()`:
+    - `gold_run_changed` → `_on_gold_run_changed()`
+    - `essence_changed` → `_on_essence_changed()`
+    - `xp_changed` → `_on_xp_changed()`
+  - Initializes labels from current GameManager state.
 - **Texture Requirements (Player Health Bar):**
   - Background texture contains the heart, frame, and bar track.
   - Progress texture must be tightly cropped so it includes ONLY the fill bar (no heart, no frame, no large padding).
@@ -294,6 +355,13 @@ Current dev focus: **Combat polish + enemy interactions**
 ## Scenes Overview
 ### Level_01.tscn
 - World layout + enemies + player.
+- Main run scene loaded when starting a new run.
+
+### Tavern.tscn
+- Hub scene where player returns after death.
+- Contains interaction areas for Bartender and RunDoor.
+- Bartender: Shop interaction (future implementation).
+- RunDoor: Starts new run when interacted with.
 
 ### Player.tscn
 - Player root (CharacterBody2D, script: `player.gd`, in group `"player"`)
@@ -305,8 +373,12 @@ Current dev focus: **Combat polish + enemy interactions**
 ### HUD.tscn
 - HUD root (CanvasLayer, script: `hud.gd`)
 - PlayerHealthBar (TextureProgressBar)
-- Listens to Player's `health_changed` signal
-- Updates health bar with smooth tweening
+- CurrencyPanel (HBoxContainer):
+  - GoldBox/GoldLabel: Displays run gold
+  - EssenceBox/EssenceLabel: Displays permanent essence
+  - XPBox/XPLabel: Displays level and XP
+- Listens to Player's `health_changed` signal and GameManager currency/XP signals
+- Updates all displays with smooth tweening (health) or instant updates (currency/XP)
 
 ### Gun.tscn
 - Weapon scene with muzzle + audio.
@@ -326,16 +398,26 @@ Current dev focus: **Combat polish + enemy interactions**
 ### DamageNumber.tscn
 - Node2D + RichTextLabel for damage display.
 
+### CoinSilver.tscn / CoinGold.tscn
+- Coin pickup scenes (Area2D with AnimatedSprite2D).
+- Different values for silver vs gold coins.
+
 ---
 
 ## Crosshair System (`crosshair.gd`)
 - **Outer Crosshair**: Follows mouse instantly in world space.
+- **Outer Crosshair Pulse**: Scales up briefly when weapon fires, then smoothly returns to normal size.
+  - Driven by weapon's `fired(strength, duration)` signal.
+  - Exported `outer_pulse_scale` (default 1.25) and `outer_pulse_duration` (default 0.08s).
+  - Uses tween with `TRANS_SINE` and `EASE_OUT` for smooth return.
+  - Stores base scale in `_ready()` to pulse around it.
 - **Weighted Aim Dot**: Smoothly lags behind mouse using screen-space lerp.
 - Screen-space smoothing prevents lag from player movement.
 - Converts smoothed screen position back to world space using canvas transform.
 - Per-weapon smoothing speed via `weapon_base.gd.aim_dot_lerp_speed`.
 - Player aims gun and arm at `crosshair.get_dot_world_position()`.
 - **Mouse Cursor Replacement**: OS mouse cursor is hidden; crosshair root follows mouse position each frame to replace system cursor.
+- **Signal Connection**: Player connects weapon's `fired` signal to `crosshair.on_weapon_fired()` in addition to camera shake.
 
 ## Key Files
 ### Scenes
@@ -347,22 +429,45 @@ Current dev focus: **Combat polish + enemy interactions**
 - `game/scenes/EnemyBasic.tscn` - Enemy scene
 - `game/scenes/DamageNumber.tscn` - Damage number display scene
 - `game/scenes/Crosshair.tscn` - Crosshair with outer and dot sprites
+- `game/scenes/CoinSilver.tscn` - Silver coin pickup scene (Area2D with AnimatedSprite2D)
+- `game/scenes/CoinGold.tscn` - Gold coin pickup scene (Area2D with AnimatedSprite2D)
 
 ### Scripts
-- `game/scripts/player.gd` - Player movement, health, shooting, animation, aiming
-- `game/scripts/hud.gd` - HUD health bar management
+- `game/scripts/game_manager.gd` - Centralized singleton for currency, XP/level, and scene management
+- `game/scripts/player.gd` - Player movement, health, shooting, animation, aiming, gold forwarding
+- `game/scripts/hud.gd` - HUD health bar and currency/XP display management
 - `game/scripts/camera_2d.gd` - Camera shake system
-- `game/scripts/crosshair.gd` - Crosshair and weighted aim dot system
+- `game/scripts/crosshair.gd` - Crosshair and weighted aim dot system with outer pulse effect
 - `game/scripts/damage_number.gd` - Floating damage number animation
-- `game/scripts/enemies/enemy.gd` - Enemy AI, health, contact damage, flash, health bars
+- `game/scripts/enemies/enemy.gd` - Enemy AI, health, contact damage, flash, health bars, loot drops, XP rewards
 - `game/scripts/weapons/weapon_base.gd` - Base weapon class with damage/crit system, aim dot smoothing
 - `game/scripts/weapons/weapon_pistol.gd` - Pistol weapon implementation
 - `game/scripts/weapons/bullet.gd` - Bullet movement and collision
+- `game/scripts/coin.gd` - Coin pickup system with arc motion and bobbing animation
+- `game/scripts/tavern_bartender.gd` - Bartender interaction script (emits `interacted` signal)
+- `game/scripts/tavern_run_door.gd` - Run door interaction script (calls GameManager.start_new_run())
 
 ### Shaders
 - `game/shaders/enemy_flash.gdshader` - Shader for enemy hit flash effect
 
 ---
+
+## Coin System (`coin.gd`)
+- **Lightweight Pickup System**: Uses Area2D (no physics simulation) for performance.
+- **Arc Motion**: Coins animate along a parametric arc from spawn to landing position.
+  - Random horizontal direction (left/right) and distance.
+  - Random vertical drop distance.
+  - Sine-based arc height for smooth curve.
+  - Tween-based animation over `travel_time` (default 0.4s).
+- **Idle Bobbing**: After landing, coins bob up and down using sine wave.
+  - Configurable `bob_height` (default 2.0) and `bob_speed` (default 4.0).
+- **Player Detection**: Uses `Area2D.body_entered` to detect player overlap.
+  - Handles parent/child node relationships (same pattern as enemy contact damage).
+  - Calls `player.add_gold(value)` when collected.
+- **Pickup Behavior**: 
+  - Disables collision and hides sprite instantly on pickup.
+  - Plays optional pickup sound, then frees after audio finishes.
+  - Uses `set_deferred()` for collision shape disabling to avoid physics errors.
 
 ## Known Limitations
 - Pistol only — no other weapons yet.
@@ -370,6 +475,9 @@ Current dev focus: **Combat polish + enemy interactions**
 - Enemy pathfinding is simple horizontal chase.
 - No knockback for player or enemies yet.
 - Player invulnerability visual feedback not yet implemented.
+- Shop system not yet implemented (bartender interaction exists but no shop logic).
+- Save/load system not yet implemented (currencies and XP are session-only).
+- Gold and essence are currently permanent (no reset on death, as intended for now) (gold maybe changed to per run).
 
 ---
 

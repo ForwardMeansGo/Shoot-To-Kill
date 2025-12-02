@@ -1,6 +1,9 @@
 extends CanvasLayer
 
 @onready var health_bar: TextureProgressBar = $PlayerHealthBar
+@onready var gold_label: Label = $CurrencyPanel/GoldBox/GoldLabel
+@onready var essence_label: Label = $CurrencyPanel/EssenceBox/EssenceLabel
+@onready var xp_label: Label = $CurrencyPanel/XPBox/XPLabel
 @export var player_path: NodePath = ^"../Player"
 
 var player: Node = null
@@ -50,6 +53,25 @@ func _ready() -> void:
 	else:
 		push_error("HUD: health_bar (PlayerHealthBar) not found under HUD")
 
+	# Hook into GameManager for gold, essence, and XP/level
+	if GameManager != null:
+		# Connect signals if available
+		if GameManager.has_signal("gold_run_changed") and not GameManager.gold_run_changed.is_connected(_on_gold_run_changed):
+			GameManager.gold_run_changed.connect(_on_gold_run_changed)
+
+		if GameManager.has_signal("essence_changed") and not GameManager.essence_changed.is_connected(_on_essence_changed):
+			GameManager.essence_changed.connect(_on_essence_changed)
+
+		if GameManager.has_signal("xp_changed") and not GameManager.xp_changed.is_connected(_on_xp_changed):
+			GameManager.xp_changed.connect(_on_xp_changed)
+
+		# Initialize from current GameManager state
+		_on_gold_run_changed(GameManager.gold_run)
+		_on_essence_changed(GameManager.essence_total)
+		_on_xp_changed(GameManager.xp, GameManager.level)
+	else:
+		push_warning("HUD: GameManager autoload not available; currency/XP HUD will not update.")
+
 func _on_player_health_changed(current: int, max: int) -> void:
 	if health_bar == null:
 		return
@@ -63,3 +85,25 @@ func _on_player_health_changed(current: int, max: int) -> void:
 	# Create a new tween to animate from current bar value to the new HP
 	hp_tween = create_tween()
 	hp_tween.tween_property(health_bar, "value", current, 0.15).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+
+func _on_gold_run_changed(current_gold: float) -> void:
+	if gold_label == null:
+		return
+
+	# Gold is a float (can be 0.5 etc). Show with at most 1 decimal place.
+	var display_value: float = snapped(current_gold, 0.1)
+	gold_label.text = str(display_value)
+
+func _on_essence_changed(current_essence: int) -> void:
+	if essence_label == null:
+		return
+
+	essence_label.text = str(current_essence)
+
+func _on_xp_changed(current_xp: int, current_level: int) -> void:
+	if xp_label == null:
+		return
+
+	# Show both level and XP so the player sees progression.
+	# Example: "Lv 3  XP 42"
+	xp_label.text = "Lv %d  XP %d" % [current_level, current_xp]

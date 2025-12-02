@@ -14,6 +14,7 @@ extends CharacterBody2D
 @export var gold_coin_scene: PackedScene
 @export_range(0.0, 1.0, 0.01) var silver_drop_chance: float = 0.5
 @export_range(0.0, 1.0, 0.01) var gold_drop_chance: float = 0.25
+@export var xp_reward: int = 10
 
 enum State {
 	CHASE,
@@ -220,4 +221,9 @@ func die() -> void:
 	
 	state = State.DEAD
 	_drop_loot()
+
+	# Award XP for killing this enemy
+	if xp_reward > 0 and GameManager != null and GameManager.has_method("add_xp"):
+		GameManager.add_xp(xp_reward)
+	
 	queue_free()

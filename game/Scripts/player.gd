@@ -286,11 +286,24 @@ func take_damage(amount: int) -> void:
 		die()
 
 func die() -> void:
+	# Notify any listeners
 	emit_signal("died")
-	print("Player died, reloading scene...")
-	get_tree().reload_current_scene()
+
+	# Let GameManager handle what happens on death (e.g. go to Tavern)
+	if GameManager != null and GameManager.has_method("on_player_died"):
+		GameManager.on_player_died()
+	else:
+		push_warning("GameManager autoload not available; cannot handle player death centrally.")
+
+	# Do not reload the scene here; GameManager is responsible for transitions.
 
 func add_gold(amount: float) -> void:
-	gold += amount
-	emit_signal("gold_changed", gold)
-	print("Player picked up gold: ", amount, " -> total gold: ", gold)
+	if amount == 0.0:
+		return
+
+	# Forward run-gold gains into the central GameManager autoload.
+	# GameManager is configured as an AutoLoad singleton in Project Settings.
+	if GameManager != null and GameManager.has_method("add_gold_run"):
+		GameManager.add_gold_run(amount)
+	else:
+		push_warning("GameManager autoload not available; cannot add gold.")

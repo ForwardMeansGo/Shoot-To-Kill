@@ -79,8 +79,7 @@ value = 2.0
 travel_time = 0.6
 min_vertical_drop = 25.0
 max_vertical_drop = 25.0
-arc_height = 15.0
-bob_height = 1.0
+arc_height = 20.0
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
 sprite_frames = SubResource("SpriteFrames_d12uo")
@@ -92,4 +91,4 @@ shape = SubResource("CircleShape2D_j0r3i")
 
 [node name="PickupAudio" type="AudioStreamPlayer2D" parent="."]
 stream = ExtResource("3_iden5")
-volume_db = -5.92
+volume_db = -9.0
