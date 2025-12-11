@@ -18,9 +18,9 @@
 
 ## Weapons
 - [ ] Add new weapons (shotgun, SMG, rifle, magic staff)
-- [ ] Weapon cooldowns
+- [x] Weapon cooldowns (fire rate system implemented)
 - [ ] Reload system + ammo UI
-- [ ] Weapon switching
+- [x] Weapon switching (primary/secondary system implemented)
 
 ## Movement
 - [ ] Dodge roll
@@ -35,7 +35,8 @@
 - [x] Crosshair
 - [ ] Pause menu
 - [ ] Main menu
-- [ ] Shop
+- [x] Shop (purchase system with Essence and level gating)
+- [x] Debug console (debug builds only)
 
 ## AI
 - [ ] Better enemy pathfinding

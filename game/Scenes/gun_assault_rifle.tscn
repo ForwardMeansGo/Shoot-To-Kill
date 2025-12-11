@@ -1,0 +1,29 @@
+[gd_scene load_steps=4 format=3 uid="uid://co772dyycp4p"]
+
+[ext_resource type="Script" uid="uid://dtxc7wwhdobyw" path="res://Scripts/weapons/weapon_assault_rifle.gd" id="1_cd782"]
+[ext_resource type="Texture2D" uid="uid://cph0xygv78ikm" path="res://Assets/Sprites/Guns/Mini AK.png" id="2_tkimv"]
+[ext_resource type="AudioStream" uid="uid://dne8kvkrh7lsv" path="res://Assets/Sounds/pistol_shot.mp3" id="3_18y2n"]
+
+[node name="Gun_AssaultRifle" type="Node2D"]
+script = ExtResource("1_cd782")
+shake_strength = 0.0
+shake_duration = 0.0
+base_damage_min = 6.0
+base_damage_max = 10.0
+fire_rate = 8.0
+is_full_auto = true
+spread_degrees = 3.0
+hand_offset_right = Vector2(11, -2)
+hand_offset_left = Vector2(11, 2)
+
+[node name="Muzzle" type="Marker2D" parent="."]
+position = Vector2(14, 0)
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+z_index = 1
+texture = ExtResource("2_tkimv")
+
+[node name="GunAudio" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("3_18y2n")
+volume_db = -15.0
+attenuation = 1.464086

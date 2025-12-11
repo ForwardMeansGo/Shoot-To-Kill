@@ -29,6 +29,11 @@ var was_on_floor: bool = true
 var is_landing: bool = false
 var gold: float = 0.0
 
+@export var primary_weapon_scene: PackedScene
+@export var secondary_weapon_scene: PackedScene
+
+var current_weapon_slot: int = 0  # 0 = unspecified, 1 = primary, 2 = secondary
+
 # Per-frame weapon bob offsets for different animations (tweak these values in code as needed)
 var weapon_bob_idle := [0.0, 1.0, 1.0, 0.0]
 var weapon_bob_run := [0.0, 0.0, -2.0, 0.0, 0.0, -1.0]
@@ -49,13 +54,6 @@ func _ready() -> void:
 	# Hide system mouse cursor
 	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
 
-	# Connect weapon fired signal -> camera shake and crosshair pulse
-	if gun != null and gun.has_signal("fired"):
-		gun.connect("fired", Callable(self, "_on_weapon_fired"))
-
-		if crosshair != null and crosshair.has_method("on_weapon_fired"):
-			gun.connect("fired", Callable(crosshair, "on_weapon_fired"))
-
 	# Initialize health
 	current_health = max_health
 	emit_signal("health_changed", current_health, max_health)
@@ -64,7 +62,88 @@ func _ready() -> void:
 	gold = starting_gold
 	emit_signal("gold_changed", gold)
 
+	# Weapon setup:
+	# If a primary weapon scene is assigned, equip it.
+	# Otherwise, just connect signals to whichever gun is already in the scene.
+	if primary_weapon_scene != null:
+		_equip_weapon_scene(primary_weapon_scene)
+		current_weapon_slot = 1
+	else:
+		_connect_weapon_signals()
+
+func _connect_weapon_signals() -> void:
+	if gun == null:
+		return
+
+	if gun.has_signal("fired"):
+		if not gun.is_connected("fired", Callable(self, "_on_weapon_fired")):
+			gun.connect("fired", Callable(self, "_on_weapon_fired"))
+
+		if crosshair != null and crosshair.has_method("on_weapon_fired"):
+			if not gun.is_connected("fired", Callable(crosshair, "on_weapon_fired")):
+				gun.connect("fired", Callable(crosshair, "on_weapon_fired"))
+
+
+func _disconnect_weapon_signals() -> void:
+	if gun == null:
+		return
+
+	if gun.has_signal("fired"):
+		if gun.is_connected("fired", Callable(self, "_on_weapon_fired")):
+			gun.disconnect("fired", Callable(self, "_on_weapon_fired"))
+
+		if crosshair != null and crosshair.has_method("on_weapon_fired"):
+			if gun.is_connected("fired", Callable(crosshair, "on_weapon_fired")):
+				gun.disconnect("fired", Callable(crosshair, "on_weapon_fired"))
+
+
+func _equip_weapon_scene(scene: PackedScene) -> void:
+	if scene == null:
+		return
+
+	var parent: Node2D = weapon_bob_offset
+	var new_transform: Transform2D
+
+	# If we already have a gun instance, use its transform as the anchor
+	if gun != null and gun.is_inside_tree():
+		new_transform = gun.global_transform
+		_disconnect_weapon_signals()
+		gun.queue_free()
+	else:
+		# Fallback: use the WeaponBobOffset transform
+		new_transform = parent.global_transform
+
+	# Instance and attach new weapon
+	var new_weapon: Node2D = scene.instantiate()
+	parent.add_child(new_weapon)
+
+	gun = new_weapon
+	gun.global_transform = new_transform
+
+	_connect_weapon_signals()
+
+
+func _switch_to_primary() -> void:
+	if primary_weapon_scene == null:
+		return
+	_equip_weapon_scene(primary_weapon_scene)
+	current_weapon_slot = 1
+
+
+func _switch_to_secondary() -> void:
+	if secondary_weapon_scene == null:
+		return
+	_equip_weapon_scene(secondary_weapon_scene)
+	current_weapon_slot = 2
+
+
 func _physics_process(delta: float) -> void:
+	if GameManager.has_method("is_debug_input_blocked") and GameManager.is_debug_input_blocked():
+		# Stop movement while debug input is blocked
+		if "velocity" in self:
+			velocity = Vector2.ZERO
+		return
+
 	# Gravity
 	if not is_on_floor():
 		velocity.y += GRAVITY * delta
@@ -83,6 +162,13 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	
 	_update_animation()
+
+func _input(event: InputEvent) -> void:
+	if GameManager.has_method("is_debug_input_blocked") and GameManager.is_debug_input_blocked():
+		# Debug console is open: ignore input here, but don't consume it,
+		# so UI elements (like the console) can still process it.
+		return
+	# We intentionally do NOT handle anything else here so normal input continues when debug is not blocked.
 
 func _process(delta: float) -> void:
 	# Update invulnerability timer
@@ -133,30 +219,60 @@ func _process(delta: float) -> void:
 			if self.has_method("_update_arm_visual_flip"):
 				_update_arm_visual_flip()
 			
-			# Gun hand offset (KEEP YOUR EXISTING LEFT/RIGHT TUNED VALUES)
+			# Gun hand offset (per-weapon, with fallback to old constants)
 			if gun:
-				var hand_offset: Vector2
-				
-				if facing_left:
-					hand_offset = Vector2(8, 2)   # your tuned left values
+				var hand_offset: Vector2 = Vector2.ZERO
+
+				if gun is WeaponBase:
+					if facing_left:
+						hand_offset = gun.hand_offset_left
+					else:
+						hand_offset = gun.hand_offset_right
 				else:
-					hand_offset = Vector2(8, -2)    # your tuned right values
-				
+					# Fallback: keep old pistol-tuned values
+					if facing_left:
+						hand_offset = Vector2(8, 2)
+					else:
+						hand_offset = Vector2(8, -2)
+
 				gun.global_position = arm_sprite.global_position + hand_offset.rotated(arm_sprite.global_rotation)
 
 		# Tell the weapon which way we're facing so it can flip its sprite
 		if gun.has_method("set_facing_left"):
 			gun.set_facing_left(facing_left)
 
-		# Gun firing should use the SAME aim_point
-		if Input.is_action_just_pressed("shoot"):
-			if gun.has_method("try_shoot"):
-				gun.try_shoot(aim_point)
+		# Gun input (switching + firing) should use the SAME aim_point
+		# Block gameplay input when debug console is open
+		if not (GameManager.has_method("is_debug_input_blocked") and GameManager.is_debug_input_blocked()):
+			# Weapon switching: 1 = primary, 2 = secondary
+			if Input.is_action_just_pressed("weapon_1") and primary_weapon_scene != null and current_weapon_slot != 1:
+				_switch_to_primary()
+				return
 
-				# VISUAL KICKBACK: push the weapon back along the shot direction
-				var shot_dir: Vector2 = (aim_point - get_aim_origin_global()).normalized()
-				if shot_dir.length() > 0.0:
-					kick_offset = shot_dir * -kick_strength
+			if Input.is_action_just_pressed("weapon_2") and secondary_weapon_scene != null and current_weapon_slot != 2:
+				_switch_to_secondary()
+				return
+
+			# Shooting
+			var shoot_pressed: bool = Input.is_action_pressed("shoot")
+			var shoot_just_pressed: bool = Input.is_action_just_pressed("shoot")
+
+			var wants_to_shoot: bool = false
+
+			if gun is WeaponBase and gun.is_full_auto:
+				# Full-auto weapons can fire while held
+				wants_to_shoot = shoot_pressed
+			else:
+				# Semi-auto weapons fire on click only
+				wants_to_shoot = shoot_just_pressed
+
+			if wants_to_shoot and gun.has_method("try_shoot"):
+				var did_shoot: bool = gun.try_shoot(aim_point)
+				if did_shoot:
+					# VISUAL KICKBACK: push the weapon back along the shot direction
+					var shot_dir: Vector2 = (aim_point - get_aim_origin_global()).normalized()
+					if shot_dir.length() > 0.0:
+						kick_offset = shot_dir * -kick_strength
 	
 	# Update visual weapon kickback, then bob
 	_update_kickback(delta)
@@ -267,6 +383,19 @@ func get_current_dot_lerp_speed() -> float:
 	if gun != null and gun.has_method("get_aim_dot_lerp_speed"):
 		return gun.get_aim_dot_lerp_speed()
 	return default_aim_dot_lerp_speed
+
+func set_ui_mouse_mode(is_ui_open: bool) -> void:
+	# When a full-screen UI like the shop is open, we want the OS cursor visible
+	# and the in-game crosshair hidden. When the UI closes, we go back to
+	# hidden OS cursor + crosshair.
+	if is_ui_open:
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		if crosshair != null:
+			crosshair.visible = false
+	else:
+		Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
+		if crosshair != null:
+			crosshair.visible = true
 
 func _on_weapon_fired(strength: float, duration: float) -> void:
 	if cam != null:

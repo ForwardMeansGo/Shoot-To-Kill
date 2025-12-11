@@ -73,11 +73,15 @@ Shoot-To-Kill
     │       CoinSilver.tscn
     │       crosshair.tscn
     │       damage_number.tscn
+    │       DebugConsole.tscn
     │       EnemyBasic.tscn
-    │       gun.tscn
+    │       gun_pistol.tscn
+    │       gun_assault_rifle.tscn
     │       HUD.tscn
     │       level_01.tscn
+    │       LoadoutMenu.tscn
     │       player.tscn
+    │       ShopUI.tscn
     │       Tavern.tscn
     │
     └── Scripts
@@ -85,9 +89,12 @@ Shoot-To-Kill
         │   coin.gd
         │   crosshair.gd
         │   damage_number.gd
+        │   debug_console.gd
         │   game_manager.gd
         │   hud.gd
+        │   item_database.gd
         │   player.gd
+        │   shop_ui.gd
         │   tavern_bartender.gd
         │   tavern_run_door.gd
         │
@@ -98,3 +105,4 @@ Shoot-To-Kill
                 bullet.gd
                 weapon_base.gd
                 weapon_pistol.gd
+                weapon_assault_rifle.gd

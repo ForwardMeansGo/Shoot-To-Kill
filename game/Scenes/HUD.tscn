@@ -1,10 +1,11 @@
-[gd_scene load_steps=6 format=3 uid="uid://bgl3dadmuu1pk"]
+[gd_scene load_steps=7 format=3 uid="uid://bgl3dadmuu1pk"]
 
 [ext_resource type="Texture2D" uid="uid://c7x73ifakp7c0" path="res://Assets/Sprites/Player/PlayerHealthBarBackground.png" id="1_fccik"]
 [ext_resource type="Texture2D" uid="uid://db3ic04em8pgm" path="res://Assets/Sprites/Player/PlayerHealthBarProgress.png" id="2_bjfho"]
 [ext_resource type="Script" uid="uid://d1o2beya4onqv" path="res://Scripts/hud.gd" id="3_psnte"]
 [ext_resource type="Texture2D" uid="uid://hy30cf7a5fs1" path="res://Assets/Sprites/Pickups/CoinGold.png" id="4_c3eba"]
 [ext_resource type="FontFile" uid="uid://dvvf0f0kdg8he" path="res://Assets/Font/windows_command_prompt.ttf" id="5_g8s2e"]
+[ext_resource type="Texture2D" uid="uid://bapvxldlxr8n4" path="res://Assets/Sprites/Pickups/Essence.png" id="6_g8s2e"]
 
 [node name="HUD" type="CanvasLayer"]
 script = ExtResource("3_psnte")
@@ -26,12 +27,13 @@ texture_progress_offset = Vector2(24.04, 29.06)
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -147.0
+offset_left = -284.0
 offset_top = 30.0
-offset_right = 110.0
+offset_right = -27.0
 offset_bottom = 70.0
 grow_horizontal = 0
 theme_override_constants/separation = 8
+alignment = 2
 
 [node name="GoldBox" type="HBoxContainer" parent="CurrencyPanel"]
 layout_mode = 2
@@ -53,6 +55,8 @@ layout_mode = 2
 
 [node name="EssenceIcon" type="TextureRect" parent="CurrencyPanel/EssenceBox"]
 layout_mode = 2
+texture = ExtResource("6_g8s2e")
+stretch_mode = 5
 
 [node name="EssenceLabel" type="Label" parent="CurrencyPanel/EssenceBox"]
 layout_mode = 2

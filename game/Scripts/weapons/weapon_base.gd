@@ -19,14 +19,30 @@ signal fired(shake_strength: float, shake_duration: float)
 # Per-weapon aim dot smoothing (gunAimDelay)
 @export var aim_dot_lerp_speed: float = 10.0
 
+# Fire control
+# fire_rate: shots per second. 0 or less = no internal cooldown.
+@export var fire_rate: float = 0.0
+# If true, player input can hold the trigger to keep firing.
+@export var is_full_auto: bool = false
+
+@export_range(0.0, 45.0, 0.1) var spread_degrees: float = 0.0
+# Max random angular deviation for each shot.
+# 0 = perfectly accurate. Higher = more inaccurate.
+
+# Per-weapon hand offsets (relative to the arm sprite)
+@export var hand_offset_right: Vector2 = Vector2(8, -2)
+@export var hand_offset_left: Vector2 = Vector2(8, 2)
+
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var audio_player: AudioStreamPlayer2D = $GunAudio
 
 var facing_left: bool = false
+var _time_until_next_shot: float = 0.0
 
 func _process(delta: float) -> void:
-	# Placeholder for recoil/sway later
-	pass
+	# Cooldown timer for fire rate
+	if _time_until_next_shot > 0.0:
+		_time_until_next_shot = max(_time_until_next_shot - delta, 0.0)
 
 func set_facing_left(is_left: bool) -> void:
 	facing_left = is_left
@@ -37,6 +53,16 @@ func aim_at(target_global_pos: Vector2) -> void:
 	# Rotate the weapon so its +X axis points towards the mouse
 	look_at(target_global_pos)
 
+func can_fire() -> bool:
+	# If fire_rate <= 0, weapon can always fire (no internal cooldown)
+	return _time_until_next_shot <= 0.0
+
+func _apply_fire_cooldown() -> void:
+	if fire_rate <= 0.0:
+		_time_until_next_shot = 0.0
+	else:
+		_time_until_next_shot = 1.0 / fire_rate
+
 func spawn_bullet(target_global_pos: Vector2) -> void:
 	# Roll damage and crit
 	var dmg_info := _roll_damage()
@@ -45,6 +71,12 @@ func spawn_bullet(target_global_pos: Vector2) -> void:
 	
 	var muzzle_global: Vector2 = $Muzzle.global_position
 	var dir: Vector2 = (target_global_pos - muzzle_global).normalized()
+
+	# Apply random spread (angle in degrees)
+	if spread_degrees > 0.0:
+		var half := spread_degrees
+		var random_angle := deg_to_rad(randf_range(-half, half))
+		dir = dir.rotated(random_angle)
 
 	var bullet := bullet_scene.instantiate()
 	bullet.global_position = muzzle_global
@@ -62,6 +94,7 @@ func spawn_bullet(target_global_pos: Vector2) -> void:
 	_play_shot_sound(muzzle_global)
 
 	emit_signal("fired", shake_strength, shake_duration)
+	_apply_fire_cooldown()
 
 func _roll_damage() -> Dictionary:
 	var base := randf_range(base_damage_min, base_damage_max)

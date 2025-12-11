@@ -5,23 +5,30 @@
 
 Core gameplay pillars:
 - Clean & responsive movement
-- Modular weapon system
+- Modular weapon system with weapon switching (primary/secondary)
+- Per-weapon fire rate and full-auto support
+- Per-weapon bullet spread (accuracy) system
 - Reliable bullets with continuous collision detection
 - Damage ranges + crit system
 - Floating damage numbers with smooth arcing motion and color-coded hit types
 - Enemies with full health logic and damage feedback
 - Camera shake + gun audio
 - Weighted aim dot system with per-weapon smoothing
-- Arm and gun aiming system with per-facing offsets
+- Arm and gun aiming system with per-weapon hand offsets
 - Enemy damage lag bar system
 - Visual weapon kickback system
 - Custom crosshair replacing OS mouse cursor with outer crosshair pulse on weapon fire
-- Centralized GameManager singleton for currency, XP, and scene management
-- Gold and Essence currency systems
+- Centralized GameManager singleton for currency, XP, permanent progression, and scene management
+- Gold (run currency) and Essence (permanent currency) systems
+- Gold → Essence conversion on death
 - XP/Level progression system
+- Permanent progression: Stash (inventory) and Loadout (equipment) systems
+- ItemDatabase autoload for centralized item metadata
+- Shop system for purchasing items with Essence and level gating
 - Coin pickup system with arc motion and idle bobbing
-- Tavern hub with interaction system
+- Tavern hub with shop interaction and run door
 - Scene management (death → tavern, door → new run)
+- Debug console (debug builds only) with command system and input blocking
 
 Current dev focus: **Combat polish + enemy interactions**
 
@@ -59,19 +66,28 @@ Current dev focus: **Combat polish + enemy interactions**
 - Gun and arm aim independently at the weighted dot position.
 - Arm sprite rotates toward aim point.
 - Gun positioned relative to arm using hand offset.
-- Per-facing offsets for weapon holder and gun hand position.
+- **Per-weapon hand offsets**: Each weapon defines its own `hand_offset_right` and `hand_offset_left` (configurable in Inspector).
+- Per-facing offsets for weapon holder position.
 - Weapon flips vertically using `set_facing_left()`.
 - Player sprite flips horizontally using sprite scale.
 - Weapon holder position shifts left/right depending on mouse direction.
 - OS mouse cursor is hidden; crosshair follows mouse position every frame.
 - Visual weapon kickback: gun/arm moves backward along shot direction on firing (purely cosmetic).
 
-### Shooting
+### Shooting & Weapon Switching
 - Driven from `player.gd`.
-- Pistol fires with `Input.is_action_just_pressed("shoot")`.
-- Semi-auto: 1 bullet per click.
+- **Weapon Switching**:
+  - `primary_weapon_scene` and `secondary_weapon_scene` exports allow assigning weapon scenes.
+  - Press `weapon_1` (key 1) to switch to primary weapon.
+  - Press `weapon_2` (key 2) to switch to secondary weapon.
+  - Switching preserves weapon position/rotation and reconnects signals.
+  - Primary weapon is automatically equipped on startup if assigned.
+- **Fire Modes**:
+  - **Semi-auto weapons**: Fire on click (`Input.is_action_just_pressed("shoot")`). Respect WeaponBase fire rate cooldown but require click per shot.
+  - **Full-auto weapons**: Fire continuously while held (`Input.is_action_pressed("shoot")`). Controlled by WeaponBase `is_full_auto` flag and `fire_rate`.
 - Calls `gun.try_shoot(aim_point)` using weighted dot position (not raw mouse).
-- Visual kickback: weapon/arm moves backward along shot direction on firing (purely cosmetic, does not affect aim).
+- `try_shoot()` returns `bool` indicating if shot actually fired (respects cooldown).
+- Visual kickback only applied when shot actually fires (when `try_shoot()` returns `true`).
 
 ### Camera
 - `Camera2D` with shake system.
@@ -108,26 +124,47 @@ Current dev focus: **Combat polish + enemy interactions**
 ## Weapons (Modular System)
 ### WeaponBase (`weapon_base.gd`)
 - **Exports**
-  - `base_damage_min` / `base_damage_max`
-  - `crit_chance`
-  - `crit_multiplier`
-  - `shake_strength`, `shake_duration`
-  - `bullet_scene`
+  - `base_damage_min` / `base_damage_max` - Damage range
+  - `crit_chance` - Critical hit probability (default 0.1 = 10%)
+  - `crit_multiplier` - Damage multiplier on crit (default 2.0)
+  - `shake_strength`, `shake_duration` - Camera shake tuning
+  - `aim_dot_lerp_speed` - Aim dot smoothing speed (default 10.0)
+  - `fire_rate` - Shots per second (default 0.0 = no cooldown)
+  - `is_full_auto` - If true, weapon can fire continuously while trigger held (default false)
+  - `spread_degrees` - Maximum bullet spread angle in degrees (range 0.0-45.0, default 0.0)
+  - `hand_offset_right` / `hand_offset_left` - Per-weapon hand position offsets (default Vector2(8, -2) / Vector2(8, 2))
+  - `bullet_scene` - Bullet scene to spawn
+- **Fire Rate System**
+  - Internal cooldown timer (`_time_until_next_shot`) managed automatically.
+  - `can_fire()` - Returns true if weapon can fire (cooldown expired).
+  - `_apply_fire_cooldown()` - Applies cooldown after firing (calculated from `fire_rate`).
+  - If `fire_rate <= 0`, no cooldown is applied.
+- **Bullet Spread**
+  - Applied in `spawn_bullet()` before computing bullet direction.
+  - Random angular deviation: `-spread_degrees` to `+spread_degrees`.
+  - Higher values = less accurate shots.
 - **Handles**
   - Aiming + flipping
   - Damage rolling:
     - Random damage in `[base_damage_min, base_damage_max]`
     - Crit roll (`randf() < crit_chance`)
     - Crit damage multiplied by `crit_multiplier`
-  - Spawning bullets (`Bullet.tscn`)
+  - Spawning bullets (`Bullet.tscn`) with spread applied
   - Passing damage + crit info to bullets
   - Emitting `fired` signal for camera shake
   - Playing one-shot gun audio with random pitch
 
-### Pistol
+### Pistol (`weapon_pistol.gd`)
 - Extends WeaponBase.
-- No cooldown — fires every click.
+- Semi-auto weapon: respects WeaponBase cooldown via `can_fire()`, but requires click per shot.
 - Default damage: **8–12**, with crit chance (default 10%).
+- No internal fire rate cooldown by default (can be set in Inspector).
+
+### Assault Rifle (`weapon_assault_rifle.gd`)
+- Extends WeaponBase.
+- Full-auto capable: respects WeaponBase cooldown via `can_fire()`.
+- Can be configured as full-auto by setting `is_full_auto = true` in Inspector.
+- Fire rate and spread can be tuned per weapon instance in Inspector.
 
 ---
 
@@ -301,8 +338,22 @@ Current dev focus: **Combat polish + enemy interactions**
 ## GameManager System (`game_manager.gd`)
 - **Autoload Singleton**: Configured as AutoLoad in Project Settings.
 - **Centralized Currency Management**:
-  - `gold_run` (float): Run-only currency (currently permanent, no reset on death).
+  - `gold_run` (float): Run-only currency (reset on death/new run).
   - `essence_total` (int): Permanent currency kept between runs.
+  - `GOLD_TO_ESSENCE_RATE` (const, default 100.0): Conversion rate (100 gold = 1 essence).
+  - Gold → Essence conversion happens automatically on player death.
+- **Permanent Progression System**:
+  - **Stash** (permanent inventory): Arrays for weapons, throwables, and gear (feet/back/head).
+  - **Loadout** (per-run equipment): Selected items for each slot (primary/secondary/throwable + gear).
+  - `owns_item(category, id)`: Checks if item is in stash.
+  - `unlock_item(category, id)`: Adds item to stash.
+  - `set_loadout_item(slot, id)`: Assigns item to loadout slot.
+  - `_initialize_default_stash_and_loadout()`: Syncs with ItemDatabase defaults on startup.
+- **Item Purchase System**:
+  - `can_purchase_item(item_id)`: Validates purchase (checks level, essence, ownership).
+  - `purchase_item_with_essence(item_id)`: Purchases item with Essence, unlocks in stash.
+  - Level gating: Items require minimum player level.
+  - Essence gating: Items cost permanent Essence currency.
 - **XP/Level System**:
   - `xp` (int): Current XP amount.
   - `level` (int): Current player level.
@@ -310,17 +361,22 @@ Current dev focus: **Combat polish + enemy interactions**
   - `xp_growth_factor` (export, default 1.4): Exponential growth multiplier.
   - `get_xp_required_for_next_level()`: Calculates XP needed for next level.
   - `add_xp(amount)`: Adds XP and handles level-ups automatically.
+- **Testing/Debug**:
+  - Exported testing overrides: `start_level`, `start_xp`, `start_essence`, `start_gold_run`.
+  - Debug input blocking: `debug_input_blocked` flag and helper methods.
+  - Instances DebugConsole in debug builds only.
 - **Signals**:
   - `gold_run_changed(current_gold: float)` - emitted when run gold changes.
   - `essence_changed(current_essence: int)` - emitted when essence changes.
   - `xp_changed(current_xp: int, current_level: int)` - emitted when XP or level changes.
+  - `item_unlocked(item_id: String, category: String)` - emitted when item is purchased/unlocked.
 - **Scene Management**:
   - `TAVERN_SCENE_PATH`: Path to Tavern scene (`res://Scenes/Tavern.tscn`).
   - `RUN_SCENE_PATH`: Path to run scene (`res://Scenes/level_01.tscn`).
   - `go_to_tavern()`: Transitions to Tavern scene.
   - `start_new_run()`: Transitions to run scene (starts new run).
-  - `on_player_died()`: Called on player death, transitions to Tavern.
-  - `reset_run_state()`: Resets run-only data (currently unused, gold is permanent).
+  - `on_player_died()`: Converts gold to essence, then transitions to Tavern.
+  - `reset_run_state()`: Resets run-only data (including gold).
 
 ## HUD System (`hud.gd`)
 - Separate CanvasLayer scene (`HUD.tscn`).
@@ -360,8 +416,9 @@ Current dev focus: **Combat polish + enemy interactions**
 ### Tavern.tscn
 - Hub scene where player returns after death.
 - Contains interaction areas for Bartender and RunDoor.
-- Bartender: Shop interaction (future implementation).
-- RunDoor: Starts new run when interacted with.
+- **Bartender**: Opens ShopUI when interacted with (shop system implemented).
+- **RunDoor**: Starts new run when interacted with.
+- **ShopUI**: CanvasLayer scene for purchasing items with Essence.
 
 ### Player.tscn
 - Player root (CharacterBody2D, script: `player.gd`, in group `"player"`)
@@ -421,31 +478,40 @@ Current dev focus: **Combat polish + enemy interactions**
 
 ## Key Files
 ### Scenes
-- `game/scenes/Player.tscn` - Player character scene
-- `game/scenes/HUD.tscn` - HUD UI scene (CanvasLayer)
-- `game/scenes/Level_01.tscn` - Main level scene
-- `game/scenes/Gun.tscn` - Weapon scene
-- `game/scenes/Bullet.tscn` - Bullet scene
-- `game/scenes/EnemyBasic.tscn` - Enemy scene
-- `game/scenes/DamageNumber.tscn` - Damage number display scene
-- `game/scenes/Crosshair.tscn` - Crosshair with outer and dot sprites
-- `game/scenes/CoinSilver.tscn` - Silver coin pickup scene (Area2D with AnimatedSprite2D)
-- `game/scenes/CoinGold.tscn` - Gold coin pickup scene (Area2D with AnimatedSprite2D)
+- `game/Scenes/Player.tscn` - Player character scene
+- `game/Scenes/HUD.tscn` - HUD UI scene (CanvasLayer)
+- `game/Scenes/Level_01.tscn` - Main level scene
+- `game/Scenes/Gun_Pistol.tscn` - Pistol weapon scene
+- `game/Scenes/Gun_AssaultRifle.tscn` - Assault Rifle weapon scene
+- `game/Scenes/Bullet.tscn` - Bullet scene
+- `game/Scenes/EnemyBasic.tscn` - Enemy scene
+- `game/Scenes/DamageNumber.tscn` - Damage number display scene
+- `game/Scenes/Crosshair.tscn` - Crosshair with outer and dot sprites
+- `game/Scenes/CoinSilver.tscn` - Silver coin pickup scene (Area2D with AnimatedSprite2D)
+- `game/Scenes/CoinGold.tscn` - Gold coin pickup scene (Area2D with AnimatedSprite2D)
+- `game/Scenes/ShopUI.tscn` - Shop UI scene (CanvasLayer)
+- `game/Scenes/DebugConsole.tscn` - Debug console scene (CanvasLayer, debug builds only)
+- `game/Scenes/Tavern.tscn` - Tavern hub scene
+- `game/Scenes/LoadoutMenu.tscn` - Loadout menu scene (work in progress)
 
 ### Scripts
-- `game/scripts/game_manager.gd` - Centralized singleton for currency, XP/level, and scene management
-- `game/scripts/player.gd` - Player movement, health, shooting, animation, aiming, gold forwarding
-- `game/scripts/hud.gd` - HUD health bar and currency/XP display management
-- `game/scripts/camera_2d.gd` - Camera shake system
-- `game/scripts/crosshair.gd` - Crosshair and weighted aim dot system with outer pulse effect
-- `game/scripts/damage_number.gd` - Floating damage number animation
-- `game/scripts/enemies/enemy.gd` - Enemy AI, health, contact damage, flash, health bars, loot drops, XP rewards
-- `game/scripts/weapons/weapon_base.gd` - Base weapon class with damage/crit system, aim dot smoothing
-- `game/scripts/weapons/weapon_pistol.gd` - Pistol weapon implementation
-- `game/scripts/weapons/bullet.gd` - Bullet movement and collision
-- `game/scripts/coin.gd` - Coin pickup system with arc motion and bobbing animation
-- `game/scripts/tavern_bartender.gd` - Bartender interaction script (emits `interacted` signal)
-- `game/scripts/tavern_run_door.gd` - Run door interaction script (calls GameManager.start_new_run())
+- `game/Scripts/game_manager.gd` - Centralized singleton for currency, XP/level, permanent progression, purchase system, scene management, and debug input blocking
+- `game/Scripts/item_database.gd` - Item metadata autoload (weapons, throwables, gear definitions)
+- `game/Scripts/shop_ui.gd` - Shop UI for purchasing items with Essence and level gating
+- `game/Scripts/debug_console.gd` - Debug console with commands (debug builds only)
+- `game/Scripts/player.gd` - Player movement, health, shooting, weapon switching, animation, aiming, gold forwarding, debug input blocking, UI mouse mode
+- `game/Scripts/hud.gd` - HUD health bar and currency/XP display management
+- `game/Scripts/camera_2d.gd` - Camera shake system
+- `game/Scripts/crosshair.gd` - Crosshair and weighted aim dot system with outer pulse effect
+- `game/Scripts/damage_number.gd` - Floating damage number animation
+- `game/Scripts/enemies/enemy.gd` - Enemy AI, health, contact damage, flash, health bars, loot drops, XP rewards
+- `game/Scripts/weapons/weapon_base.gd` - Base weapon class with damage/crit system, fire rate, full-auto, spread, aim dot smoothing, hand offsets
+- `game/Scripts/weapons/weapon_pistol.gd` - Pistol weapon implementation (semi-auto)
+- `game/Scripts/weapons/weapon_assault_rifle.gd` - Assault Rifle weapon implementation (full-auto capable)
+- `game/Scripts/weapons/bullet.gd` - Bullet movement and collision
+- `game/Scripts/coin.gd` - Coin pickup system with arc motion and bobbing animation
+- `game/Scripts/tavern_bartender.gd` - Bartender interaction script (opens ShopUI when interacted with)
+- `game/Scripts/tavern_run_door.gd` - Run door interaction script (calls GameManager.start_new_run())
 
 ### Shaders
 - `game/shaders/enemy_flash.gdshader` - Shader for enemy hit flash effect
@@ -470,14 +536,13 @@ Current dev focus: **Combat polish + enemy interactions**
   - Uses `set_deferred()` for collision shape disabling to avoid physics errors.
 
 ## Known Limitations
-- Pistol only — no other weapons yet.
+- Limited weapon variety — only Pistol and Assault Rifle implemented.
 - No reload, ammo UI.
 - Enemy pathfinding is simple horizontal chase.
 - No knockback for player or enemies yet.
 - Player invulnerability visual feedback not yet implemented.
-- Shop system not yet implemented (bartender interaction exists but no shop logic).
-- Save/load system not yet implemented (currencies and XP are session-only).
-- Gold and essence are currently permanent (no reset on death, as intended for now) (gold maybe changed to per run).
+- Save/load system not yet implemented (currencies, XP, stash, and loadout are session-only).
+- Loadout items not yet applied to player during runs (equipment system pending).
 
 ---
 

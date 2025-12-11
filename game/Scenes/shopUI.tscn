@@ -1,0 +1,70 @@
+[gd_scene load_steps=4 format=3 uid="uid://bpr25xdlfxchw"]
+
+[ext_resource type="Script" uid="uid://c4ptdate0orbh" path="res://Scripts/shop_ui.gd" id="1_5tjd7"]
+[ext_resource type="Texture2D" uid="uid://dbta0yjlda238" path="res://Assets/ui/shop/Shop 2.png" id="2_os43e"]
+[ext_resource type="FontFile" uid="uid://dvvf0f0kdg8he" path="res://Assets/Font/windows_command_prompt.ttf" id="3_76dav"]
+
+[node name="ShopUI" type="CanvasLayer"]
+script = ExtResource("1_5tjd7")
+
+[node name="Panel" type="TextureRect" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -343.0
+offset_top = -217.0
+offset_right = 348.0
+offset_bottom = 213.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("2_os43e")
+
+[node name="Margin" type="MarginContainer" parent="Panel"]
+layout_mode = 0
+offset_left = 71.0
+offset_top = 95.0
+offset_right = 616.04
+offset_bottom = 401.785
+
+[node name="VBox" type="VBoxContainer" parent="Panel/Margin"]
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("3_76dav")
+text = "Bartender's Shop"
+horizontal_alignment = 1
+
+[node name="EssenceLabel" type="Label" parent="Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("3_76dav")
+text = "0"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ItemList" type="ItemList" parent="Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("3_76dav")
+
+[node name="DetailsLabel" type="Label" parent="Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("3_76dav")
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Buttons" type="HBoxContainer" parent="Panel/Margin/VBox"]
+layout_mode = 2
+size_flags_horizontal = 4
+
+[node name="BuyButton" type="Button" parent="Panel/Margin/VBox/Buttons"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("3_76dav")
+text = "Buy"
+
+[node name="CloseButton" type="Button" parent="Panel/Margin/VBox/Buttons"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("3_76dav")
+text = "Close
+"

@@ -1,173 +1,112 @@
-# Development Workflow Guide
+# Development Workflow – Shoot-To-Kill
 
-This document explains the current workflow for building **Shoot-To-Kill**, describing exactly how tasks flow between **Ewan**, **ChatGPT**, **Godot**, and **Cursor**.
+This document defines how work flows between Ewan, ChatGPT, Cursor, and Godot.
 
-This workflow keeps development fast, clean, and scalable.
-
----
-
-# 🧩 1. Overall Development Philosophy
-
-We keep **reasoning and ideas separate from code editing**.
-
-* **ChatGPT** is used for planning, debugging, architecture, gameplay design, and explaining systems.
-* **Cursor** is used for precise, safe editing of the codebase.
-* **Godot** is used for engine-side changes such as node setup, scenes, UI layout, textures, and visual adjustments.
-
-This ensures minimal breakage and maximum clarity.
-
-When implementing a new system, the future of the game always needs to be considered. No bandage fixes. If there is a better, more future proof way to implement something, we do it that way, whilst always keeping things modular (if we can).
+The core rule: think first, edit safely, keep everything future-proof and modular.
 
 ---
 
-# 🧠 2. Role of ChatGPT
+# Roles
 
-Ewan speaks to ChatGPT for anything involving:
+## ChatGPT – Design and Reasoning
 
-### ✔ System design
+Used for system design, debugging, and architectural decisions.
 
-Gameplay systems, health logic, crit system, HUD architecture, enemy AI, damage pipeline, projectile systems (and anything similar)
+* Explains why things break or behave a certain way.
+* Provides step-by-step Godot engine instructions.
+* Provides Cursor prompts for any script or documentation changes.
+* Does not modify files directly.
 
-### ✔ Debugging
+## Cursor – Code and Documentation Editing
 
-Figuring out why something is breaking or behaving strangely.
+Applies all script changes.
 
-### ✔ Explaining issues
+* Updates all docs under `C:\Users\Ewan\Documents\GitHub\Shoot-To-Kill\docs`.
+* Shows diffs before applying.
+* Ensures minimal, safe, targeted code changes.
+* Executes only what ChatGPT specifies in the prompt.
 
-E.g., why the health bar didn’t move, why textures behave a certain way, how Godot nodes interact.
+## Godot – Engine and Scene Work
 
-### ✔ Planning and architecture
+Used for node setup, scene creation, UI layout, collision configuration, resource assignment, and testing.
 
-Whether a new system should be its own scene, its own script, handled by signals, etc.
-
-### ✔ Godot engine instructions
-
-ChatGPT tells Ewan exactly:
-
-* What nodes to add
-* What to rename
-* What collision layers/masks to use
-* How to assign textures
-* What settings to toggle (offset, stretch, import options, etc.)
-
-ChatGPT produces **clear, step-by-step Godot instructions with as much detail in steps as possible**.
+* Ewan does not manually edit scripts inside Godot.
+* All logic changes go through ChatGPT → Cursor.
 
 ---
 
-# 🛠️ 3. Role of Cursor
+# Core Philosophy
 
-Cursor handles all **script changes**, because it applies:
+Reasoning is separate from editing.
 
-* Diffs
-* Patch previews
-* Safe code edits
-* Multi-file changes
-
-ChatGPT provides a **Cursor-formatted prompt**, and Cursor handles the actual patching.
-
-### ✔ When a script must be changed:
-
-ChatGPT writes a full "Cursor prompt" that includes:
-
-* What files to modify
-* What functions to create, replace, or extend
-* Exact behaviour required
-* What NOT to touch
-
-Ewan pastes the prompt into Cursor.
-Cursor shows the patch.
-Ewan reviews and clicks **Apply Patch**.
-
-This guarantees:
-
-* Clean diffs
-* No accidental breakage
-* Repeatable behaviour
+* Avoid bandage fixes.
+* Prefer modular, future-proof solutions.
+* If there is a cleaner long-term approach, choose that.
+* Keep systems generalised rather than hardcoded.
 
 ---
 
-# 🎮 4. Role of Godot
-
-Godot is used for putting things together and creating the game as a whole. From ewans POV, he doesnt really work on scripts themsevles inside of GoDot:
-
-Running the game to confirm behaviour.
-
-Whenever ChatGPT instructs something engine-side, Ewan completes it directly in Godot.
-
----
-
-# 🔁 5. Workflow Loop (Step-by-Step)
+# Standard Workflow Loop
 
 This is the exact loop used for every feature.
 
-### **Step 1 — Ewan identifies a task or issue**
-
-Example: “The health bar isn’t moving correctly.”
+### **Step 1 — Ewan identifies a task, issue, or feature**
+Example: "The health bar isn't moving correctly."
 
 ### **Step 2 — Ewan describes it to ChatGPT**
+ChatGPT responds with:
+* Godot steps (if scene or UI work is required).
+* A Cursor prompt (if script or documentation changes are required).
 
-ChatGPT diagnoses and explains the cause.
-
-### **Step 3 — ChatGPT provides:**
-
-* Godot steps
-* Cursor prompt (if script changes needed)
-
-### **Step 4 — Ewan performs Godot steps**
-
+### **Step 3 — Ewan performs Godot steps exactly as written**
 Node setup, textures, importing, UI fixes, collision configuration.
 
-### **Step 5 — Ewan copies Cursor prompt into Cursor**
+### **Step 4 — Ewan pastes the Cursor prompt into Cursor and reviews the diff**
+Cursor applies the patch.
 
-Cursor applies patch.
-
-### **Step 6 — Ewan tests in Godot**
-
-Everything loops back from there.
+### **Step 5 — Ewan tests the results in Godot**
+If something is wrong, Ewan reports it and the loop repeats.
 
 ---
 
-# 📂 6. Division of Responsibilities
+# Division of Responsibilities
 
 ### ChatGPT
 
-* System reasoning
-* Debugging
-* Planning new features
-* Godot instructions
-* Writing Cursor prompts
+* System reasoning and design.
+* Debugging.
+* Planning new features.
+* Providing detailed engine instructions.
+* Writing all Cursor prompts.
 
 ### Cursor
 
-* Applying code patches
-* Safely editing scripts
-* Showing diffs
-* Keeping code stable
+* Applying code and documentation changes.
+* Keeping edits isolated and safe.
+* Ensuring the docs in `/docs` remain accurate and updated.
+* Maintaining clean diffs and consistent behaviour.
 
 ### Godot
 
-* Scene editing
-* UI setup
-* Resource assignment
-* Running tests
-* Creating the game
+* Scene editing.
+* UI layout and visual adjustments.
+* Resource assignments.
+* Running and testing the game.
 
 ---
 
-# ⭐ 7. Why This Workflow Works
+# Rules for ChatGPT
 
-* ChatGPT does the thinking.
-* Cursor does the coding.
-* Godot handles the visuals.
-* Ewan stays fully in control.
+When participating in development, ChatGPT must follow this pattern:
 
-This produces:
+1. **Ewan asks a question.**
+2. **ChatGPT replies** with explanations and instructions.
+3. **If engine changes are needed**, ChatGPT provides clear, numbered Godot steps.
+4. **If script or documentation changes are needed**, ChatGPT provides a Cursor prompt ready to paste.
+5. **Ewan performs Godot steps and applies Cursor prompt.**
+6. **Ewan tests and confirms** whether it behaves as expected.
 
-* Clean code
-* Predictable behaviour
-* Zero overwritten work
-* Fast iteration
-* No architecture mistakes
+ChatGPT should never suggest editing code directly in Godot and should never provide vague instructions. All edits must be repeatable, explicit, and safe.
 
 ---
 
@@ -177,18 +116,11 @@ The workflow is:
 
 1. **Talk to ChatGPT** for design, debugging, and instructions.
 2. **Follow engine steps in Godot** for non-script tasks.
-3. **Paste Cursor prompts** for script changes.
-4. **Test in Godot**.
+3. **Paste Cursor prompts** for script and documentation changes.
+4. **Test results in Godot.**
 
-This is for CHATGPT to follow:
-
-1. Ewan asks question
-2. ChatGPT replies
-2.A If changes required in GoDot, ChatGPT provides step by step, detailed instructions for Ewan to follow to action these changes
-2.B If a script change is required ChatGPT ALWAYS provide a cursor prompt for ewan to give cursor to safely implement these changes/update the script
-3. Ewan Tests in GoDot and gives the goahead if the change has been successful/behaves as expected
-That’s the full development pipeline.
+This ensures consistent architecture, clean code, and predictable behaviour throughout the project.
 
 ---
 
-This `workflow.md` file can evolve as the game scales
+This `workflow.md` file can evolve as the game scales.

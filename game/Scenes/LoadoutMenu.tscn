@@ -1,0 +1,50 @@
+[gd_scene load_steps=2 format=3 uid="uid://bpjulllcgtywp"]
+
+[ext_resource type="Script" uid="uid://1thwuv1qmbve" path="res://Scripts/loadout_menu.gd" id="1_cw5rx"]
+
+[node name="LoadoutMenu" type="CanvasLayer"]
+script = ExtResource("1_cw5rx")
+
+[node name="Panel" type="Panel" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -216.0
+offset_top = -135.0
+offset_right = 184.0
+offset_bottom = 125.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="Panel"]
+layout_mode = 0
+offset_left = 57.0
+offset_top = 41.0
+offset_right = 357.0
+offset_bottom = 253.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Panel/MarginContainer"]
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="Panel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Loadout Overview"
+horizontal_alignment = 1
+
+[node name="InfoScroll" type="ScrollContainer" parent="Panel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(300, 150)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="InfoLabel" type="Label" parent="Panel/MarginContainer/VBoxContainer/InfoScroll"]
+custom_minimum_size = Vector2(300, 150)
+layout_mode = 2
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="CloseButton" type="Button" parent="Panel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Close"

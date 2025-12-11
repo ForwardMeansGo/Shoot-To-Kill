@@ -9,7 +9,7 @@ This document contains copies of all scripts in the project, organized by script
 ### `player.gd`
 **Location:** `game/Scripts/player.gd`  
 **Extends:** `CharacterBody2D`  
-**Function:** Main player controller handling movement, health, shooting, animation, aiming, weapon bob, and visual kickback.
+**Function:** Main player controller handling movement, health, shooting, weapon switching (primary/secondary), animation, aiming, weapon bob, visual kickback, debug input blocking, and UI mouse mode management.
 
 ```gdscript
 extends CharacterBody2D
@@ -43,6 +43,11 @@ var was_on_floor: bool = true
 var is_landing: bool = false
 var gold: float = 0.0
 
+@export var primary_weapon_scene: PackedScene
+@export var secondary_weapon_scene: PackedScene
+
+var current_weapon_slot: int = 0  # 0 = unspecified, 1 = primary, 2 = secondary
+
 # Per-frame weapon bob offsets for different animations (tweak these values in code as needed)
 var weapon_bob_idle := [0.0, 1.0, 1.0, 0.0]
 var weapon_bob_run := [0.0, 0.0, -2.0, 0.0, 0.0, -1.0]
@@ -63,13 +68,6 @@ func _ready() -> void:
 	# Hide system mouse cursor
 	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
 
-	# Connect weapon fired signal -> camera shake and crosshair pulse
-	if gun != null and gun.has_signal("fired"):
-		gun.connect("fired", Callable(self, "_on_weapon_fired"))
-
-		if crosshair != null and crosshair.has_method("on_weapon_fired"):
-			gun.connect("fired", Callable(crosshair, "on_weapon_fired"))
-
 	# Initialize health
 	current_health = max_health
 	emit_signal("health_changed", current_health, max_health)
@@ -78,7 +76,87 @@ func _ready() -> void:
 	gold = starting_gold
 	emit_signal("gold_changed", gold)
 
+	# Weapon setup:
+	# If a primary weapon scene is assigned, equip it.
+	# Otherwise, just connect signals to whichever gun is already in the scene.
+	if primary_weapon_scene != null:
+		_equip_weapon_scene(primary_weapon_scene)
+		current_weapon_slot = 1
+	else:
+		_connect_weapon_signals()
+
+func _connect_weapon_signals() -> void:
+	if gun == null:
+		return
+
+	if gun.has_signal("fired"):
+		if not gun.is_connected("fired", Callable(self, "_on_weapon_fired")):
+			gun.connect("fired", Callable(self, "_on_weapon_fired"))
+
+		if crosshair != null and crosshair.has_method("on_weapon_fired"):
+			if not gun.is_connected("fired", Callable(crosshair, "on_weapon_fired")):
+				gun.connect("fired", Callable(crosshair, "on_weapon_fired"))
+
+
+func _disconnect_weapon_signals() -> void:
+	if gun == null:
+		return
+
+	if gun.has_signal("fired"):
+		if gun.is_connected("fired", Callable(self, "_on_weapon_fired")):
+			gun.disconnect("fired", Callable(self, "_on_weapon_fired"))
+
+		if crosshair != null and crosshair.has_method("on_weapon_fired"):
+			if gun.is_connected("fired", Callable(crosshair, "on_weapon_fired")):
+				gun.disconnect("fired", Callable(crosshair, "on_weapon_fired"))
+
+
+func _equip_weapon_scene(scene: PackedScene) -> void:
+	if scene == null:
+		return
+
+	var parent: Node2D = weapon_bob_offset
+	var new_transform: Transform2D
+
+	# If we already have a gun instance, use its transform as the anchor
+	if gun != null and gun.is_inside_tree():
+		new_transform = gun.global_transform
+		_disconnect_weapon_signals()
+		gun.queue_free()
+	else:
+		# Fallback: use the WeaponBobOffset transform
+		new_transform = parent.global_transform
+
+	# Instance and attach new weapon
+	var new_weapon: Node2D = scene.instantiate()
+	parent.add_child(new_weapon)
+
+	gun = new_weapon
+	gun.global_transform = new_transform
+
+	_connect_weapon_signals()
+
+
+func _switch_to_primary() -> void:
+	if primary_weapon_scene == null:
+		return
+	_equip_weapon_scene(primary_weapon_scene)
+	current_weapon_slot = 1
+
+
+func _switch_to_secondary() -> void:
+	if secondary_weapon_scene == null:
+		return
+	_equip_weapon_scene(secondary_weapon_scene)
+	current_weapon_slot = 2
+
 func _physics_process(delta: float) -> void:
+	if GameManager.has_method("is_debug_input_blocked") and GameManager.is_debug_input_blocked():
+		# Stop movement while debug input is blocked
+		if "velocity" in self:
+			velocity = Vector2.ZERO
+		return
+
 	# Gravity
 	if not is_on_floor():
 		velocity.y += GRAVITY * delta
@@ -97,6 +175,13 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	
 	_update_animation()
+
+func _input(event: InputEvent) -> void:
+	if GameManager.has_method("is_debug_input_blocked") and GameManager.is_debug_input_blocked():
+		# Debug console is open: ignore input here, but don't consume it,
+		# so UI elements (like the console) can still process it.
+		return
+	# We intentionally do NOT handle anything else here so normal input continues when debug is not blocked.
 
 func _process(delta: float) -> void:
 	# Update invulnerability timer
@@ -147,30 +232,60 @@ func _process(delta: float) -> void:
 			if self.has_method("_update_arm_visual_flip"):
 				_update_arm_visual_flip()
 			
-			# Gun hand offset (KEEP YOUR EXISTING LEFT/RIGHT TUNED VALUES)
+			# Gun hand offset (per-weapon, with fallback to old constants)
 			if gun:
-				var hand_offset: Vector2
-				
-				if facing_left:
-					hand_offset = Vector2(8, 2)   # your tuned left values
+				var hand_offset: Vector2 = Vector2.ZERO
+
+				if gun is WeaponBase:
+					if facing_left:
+						hand_offset = gun.hand_offset_left
+					else:
+						hand_offset = gun.hand_offset_right
 				else:
-					hand_offset = Vector2(8, -2)    # your tuned right values
-				
+					# Fallback: keep old pistol-tuned values
+					if facing_left:
+						hand_offset = Vector2(8, 2)
+					else:
+						hand_offset = Vector2(8, -2)
+
 				gun.global_position = arm_sprite.global_position + hand_offset.rotated(arm_sprite.global_rotation)
 
 		# Tell the weapon which way we're facing so it can flip its sprite
 		if gun.has_method("set_facing_left"):
 			gun.set_facing_left(facing_left)
 
-		# Gun firing should use the SAME aim_point
-		if Input.is_action_just_pressed("shoot"):
-			if gun.has_method("try_shoot"):
-				gun.try_shoot(aim_point)
+		# Gun input (switching + firing) should use the SAME aim_point
+		# Block gameplay input when debug console is open
+		if not (GameManager.has_method("is_debug_input_blocked") and GameManager.is_debug_input_blocked()):
+			# Weapon switching: 1 = primary, 2 = secondary
+			if Input.is_action_just_pressed("weapon_1") and primary_weapon_scene != null and current_weapon_slot != 1:
+				_switch_to_primary()
+				return
 
-				# VISUAL KICKBACK: push the weapon back along the shot direction
-				var shot_dir: Vector2 = (aim_point - get_aim_origin_global()).normalized()
-				if shot_dir.length() > 0.0:
-					kick_offset = shot_dir * -kick_strength
+			if Input.is_action_just_pressed("weapon_2") and secondary_weapon_scene != null and current_weapon_slot != 2:
+				_switch_to_secondary()
+				return
+
+			# Shooting
+			var shoot_pressed: bool = Input.is_action_pressed("shoot")
+			var shoot_just_pressed: bool = Input.is_action_just_pressed("shoot")
+
+			var wants_to_shoot: bool = false
+
+			if gun is WeaponBase and gun.is_full_auto:
+				# Full-auto weapons can fire while held
+				wants_to_shoot = shoot_pressed
+			else:
+				# Semi-auto weapons fire on click only
+				wants_to_shoot = shoot_just_pressed
+
+			if wants_to_shoot and gun.has_method("try_shoot"):
+				var did_shoot: bool = gun.try_shoot(aim_point)
+				if did_shoot:
+					# VISUAL KICKBACK: push the weapon back along the shot direction
+					var shot_dir: Vector2 = (aim_point - get_aim_origin_global()).normalized()
+					if shot_dir.length() > 0.0:
+						kick_offset = shot_dir * -kick_strength
 	
 	# Update visual weapon kickback, then bob
 	_update_kickback(delta)
@@ -282,6 +397,19 @@ func get_current_dot_lerp_speed() -> float:
 		return gun.get_aim_dot_lerp_speed()
 	return default_aim_dot_lerp_speed
 
+func set_ui_mouse_mode(is_ui_open: bool) -> void:
+	# When a full-screen UI like the shop is open, we want the OS cursor visible
+	# and the in-game crosshair hidden. When the UI closes, we go back to
+	# hidden OS cursor + crosshair.
+	if is_ui_open:
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		if crosshair != null:
+			crosshair.visible = false
+	else:
+		Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
+		if crosshair != null:
+			crosshair.visible = true
+
 func _on_weapon_fired(strength: float, duration: float) -> void:
 	if cam != null:
 		cam.start_shake(strength, duration)
@@ -300,14 +428,27 @@ func take_damage(amount: int) -> void:
 		die()
 
 func die() -> void:
+	# Notify any listeners
 	emit_signal("died")
-	print("Player died, reloading scene...")
-	get_tree().reload_current_scene()
+
+	# Let GameManager handle what happens on death (e.g. go to Tavern)
+	if GameManager != null and GameManager.has_method("on_player_died"):
+		GameManager.on_player_died()
+	else:
+		push_warning("GameManager autoload not available; cannot handle player death centrally.")
+
+	# Do not reload the scene here; GameManager is responsible for transitions.
 
 func add_gold(amount: float) -> void:
-	gold += amount
-	emit_signal("gold_changed", gold)
-	print("Player picked up gold: ", amount, " -> total gold: ", gold)
+	if amount == 0.0:
+		return
+
+	# Forward run-gold gains into the central GameManager autoload.
+	# GameManager is configured as an AutoLoad singleton in Project Settings.
+	if GameManager != null and GameManager.has_method("add_gold_run"):
+		GameManager.add_gold_run(amount)
+	else:
+		push_warning("GameManager autoload not available; cannot add gold.")
 ```
 
 ---
@@ -336,6 +477,7 @@ extends CharacterBody2D
 @export var gold_coin_scene: PackedScene
 @export_range(0.0, 1.0, 0.01) var silver_drop_chance: float = 0.5
 @export_range(0.0, 1.0, 0.01) var gold_drop_chance: float = 0.25
+@export var xp_reward: int = 10
 
 enum State {
 	CHASE,
@@ -542,6 +684,11 @@ func die() -> void:
 	
 	state = State.DEAD
 	_drop_loot()
+
+	# Award XP for killing this enemy
+	if xp_reward > 0 and GameManager != null and GameManager.has_method("add_xp"):
+		GameManager.add_xp(xp_reward)
+	
 	queue_free()
 ```
 
@@ -553,7 +700,7 @@ func die() -> void:
 **Location:** `game/Scripts/weapons/weapon_base.gd`  
 **Extends:** `Node2D`  
 **Class Name:** `WeaponBase`  
-**Function:** Base class for all weapons, handling damage rolling, crit system, bullet spawning, audio, and aim dot smoothing.
+**Function:** Base class for all weapons, handling damage rolling, crit system, fire rate, full-auto, bullet spread, bullet spawning, audio, aim dot smoothing, and per-weapon hand offsets.
 
 ```gdscript
 extends Node2D
@@ -577,14 +724,30 @@ signal fired(shake_strength: float, shake_duration: float)
 # Per-weapon aim dot smoothing (gunAimDelay)
 @export var aim_dot_lerp_speed: float = 10.0
 
+# Fire control
+# fire_rate: shots per second. 0 or less = no internal cooldown.
+@export var fire_rate: float = 0.0
+# If true, player input can hold the trigger to keep firing.
+@export var is_full_auto: bool = false
+
+@export_range(0.0, 45.0, 0.1) var spread_degrees: float = 0.0
+# Max random angular deviation for each shot.
+# 0 = perfectly accurate. Higher = more inaccurate.
+
+# Per-weapon hand offsets (relative to the arm sprite)
+@export var hand_offset_right: Vector2 = Vector2(8, -2)
+@export var hand_offset_left: Vector2 = Vector2(8, 2)
+
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var audio_player: AudioStreamPlayer2D = $GunAudio
 
 var facing_left: bool = false
+var _time_until_next_shot: float = 0.0
 
 func _process(delta: float) -> void:
-	# Placeholder for recoil/sway later
-	pass
+	# Cooldown timer for fire rate
+	if _time_until_next_shot > 0.0:
+		_time_until_next_shot = max(_time_until_next_shot - delta, 0.0)
 
 func set_facing_left(is_left: bool) -> void:
 	facing_left = is_left
@@ -595,6 +758,16 @@ func aim_at(target_global_pos: Vector2) -> void:
 	# Rotate the weapon so its +X axis points towards the mouse
 	look_at(target_global_pos)
 
+func can_fire() -> bool:
+	# If fire_rate <= 0, weapon can always fire (no internal cooldown)
+	return _time_until_next_shot <= 0.0
+
+func _apply_fire_cooldown() -> void:
+	if fire_rate <= 0.0:
+		_time_until_next_shot = 0.0
+	else:
+		_time_until_next_shot = 1.0 / fire_rate
+
 func spawn_bullet(target_global_pos: Vector2) -> void:
 	# Roll damage and crit
 	var dmg_info := _roll_damage()
@@ -603,6 +776,12 @@ func spawn_bullet(target_global_pos: Vector2) -> void:
 	
 	var muzzle_global: Vector2 = $Muzzle.global_position
 	var dir: Vector2 = (target_global_pos - muzzle_global).normalized()
+
+	# Apply random spread (angle in degrees)
+	if spread_degrees > 0.0:
+		var half := spread_degrees
+		var random_angle := deg_to_rad(randf_range(-half, half))
+		dir = dir.rotated(random_angle)
 
 	var bullet := bullet_scene.instantiate()
 	bullet.global_position = muzzle_global
@@ -620,6 +799,7 @@ func spawn_bullet(target_global_pos: Vector2) -> void:
 	_play_shot_sound(muzzle_global)
 
 	emit_signal("fired", shake_strength, shake_duration)
+	_apply_fire_cooldown()
 
 func _roll_damage() -> Dictionary:
 	var base := randf_range(base_damage_min, base_damage_max)
@@ -657,13 +837,47 @@ func _play_shot_sound(at_position: Vector2) -> void:
 ### `weapon_pistol.gd`
 **Location:** `game/Scripts/weapons/weapon_pistol.gd`  
 **Extends:** `WeaponBase`  
-**Function:** Pistol weapon implementation with semi-auto firing.
+**Function:** Pistol weapon implementation with semi-auto firing that respects WeaponBase cooldown.
 
 ```gdscript
 extends WeaponBase
 
 func try_shoot(target_global_pos: Vector2) -> bool:
-	# Semi-auto pistol, no internal cooldown
+	# Semi-auto pistol: respect WeaponBase cooldown, but no hold-to-fire.
+	if not can_fire():
+		return false
+
+	spawn_bullet(target_global_pos)
+	return true
+```
+
+### `weapon_assault_rifle.gd`
+**Location:** `game/Scripts/weapons/weapon_assault_rifle.gd`  
+**Extends:** `WeaponBase`  
+**Function:** Assault Rifle weapon implementation capable of full-auto firing when configured.
+
+```gdscript
+extends WeaponBase
+
+"""
+Assault Rifle weapon implementation.
+
+For now this behaves like a semi-auto weapon:
+- One shot per click (same as pistol).
+- All behaviour (damage, crit, shake, aim dot smoothing) is driven
+  by the exported properties on WeaponBase and tuned per-scene.
+
+Later we can extend this script with:
+- Internal fire rate / cooldown.
+- Proper full-auto behaviour when the shoot button is held.
+- Per-weapon recoil patterns if needed.
+"""
+
+func try_shoot(target_global_pos: Vector2) -> bool:
+	# Full-auto capable: WeaponBase handles cooldown.
+	if not can_fire():
+		return false
+
 	spawn_bullet(target_global_pos)
 	return true
 ```
@@ -759,12 +973,15 @@ func _handle_hit(body: Object) -> void:
 ### `hud.gd`
 **Location:** `game/Scripts/hud.gd`  
 **Extends:** `CanvasLayer`  
-**Function:** HUD manager for player health bar with smooth tweening.
+**Function:** HUD manager for player health bar with smooth tweening, and currency/XP display panel.
 
 ```gdscript
 extends CanvasLayer
 
 @onready var health_bar: TextureProgressBar = $PlayerHealthBar
+@onready var gold_label: Label = $CurrencyPanel/GoldBox/GoldLabel
+@onready var essence_label: Label = $CurrencyPanel/EssenceBox/EssenceLabel
+@onready var xp_label: Label = $CurrencyPanel/XPBox/XPLabel
 @export var player_path: NodePath = ^"../Player"
 
 var player: Node = null
@@ -814,6 +1031,25 @@ func _ready() -> void:
 	else:
 		push_error("HUD: health_bar (PlayerHealthBar) not found under HUD")
 
+	# Hook into GameManager for gold, essence, and XP/level
+	if GameManager != null:
+		# Connect signals if available
+		if GameManager.has_signal("gold_run_changed") and not GameManager.gold_run_changed.is_connected(_on_gold_run_changed):
+			GameManager.gold_run_changed.connect(_on_gold_run_changed)
+
+		if GameManager.has_signal("essence_changed") and not GameManager.essence_changed.is_connected(_on_essence_changed):
+			GameManager.essence_changed.connect(_on_essence_changed)
+
+		if GameManager.has_signal("xp_changed") and not GameManager.xp_changed.is_connected(_on_xp_changed):
+			GameManager.xp_changed.connect(_on_xp_changed)
+
+		# Initialize from current GameManager state
+		_on_gold_run_changed(GameManager.gold_run)
+		_on_essence_changed(GameManager.essence_total)
+		_on_xp_changed(GameManager.xp, GameManager.level)
+	else:
+		push_warning("HUD: GameManager autoload not available; currency/XP HUD will not update.")
+
 func _on_player_health_changed(current: int, max: int) -> void:
 	if health_bar == null:
 		return
@@ -827,6 +1063,28 @@ func _on_player_health_changed(current: int, max: int) -> void:
 	# Create a new tween to animate from current bar value to the new HP
 	hp_tween = create_tween()
 	hp_tween.tween_property(health_bar, "value", current, 0.15).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+
+func _on_gold_run_changed(current_gold: float) -> void:
+	if gold_label == null:
+		return
+
+	# Gold is a float (can be 0.5 etc). Show with at most 1 decimal place.
+	var display_value: float = snapped(current_gold, 0.1)
+	gold_label.text = str(display_value)
+
+func _on_essence_changed(current_essence: int) -> void:
+	if essence_label == null:
+		return
+
+	essence_label.text = str(current_essence)
+
+func _on_xp_changed(current_xp: int, current_level: int) -> void:
+	if xp_label == null:
+		return
+
+	# Show both level and XP so the player sees progression.
+	# Example: "Lv 3  XP 42"
+	xp_label.text = "Lv %d  XP %d" % [current_level, current_xp]
 ```
 
 ### `crosshair.gd`
@@ -1205,14 +1463,1155 @@ func start_shake(strength: float = 4.0, duration: float = 0.1) -> void:
 
 ---
 
+## Core System Scripts
+
+### `game_manager.gd`
+**Location:** `game/Scripts/game_manager.gd`  
+**Extends:** `Node`  
+**Function:** Centralized autoload singleton for currency management, XP/level system, permanent progression (stash/loadout), item purchases, scene transitions, and debug input blocking.
+
+```gdscript
+extends Node
+
+const TAVERN_SCENE_PATH := "res://Scenes/Tavern.tscn"
+const RUN_SCENE_PATH := "res://Scenes/level_01.tscn"
+const GOLD_TO_ESSENCE_RATE: float = 100.0
+
+signal gold_run_changed(current_gold: float)
+signal essence_changed(current_essence: int)
+signal xp_changed(current_xp: int, current_level: int)
+signal item_unlocked(item_id: String, category: String)
+
+# Run-only currency: reset when a new run starts or on death
+var gold_run: float = 0.0
+
+# Permanent currency: kept between runs
+var essence_total: int = 0
+
+# Permanent inventory (Stash)
+var stash_weapons: Array[String] = []
+var stash_throwables: Array[String] = []
+var stash_gear_feet: Array[String] = []
+var stash_gear_back: Array[String] = []
+var stash_gear_head: Array[String] = []
+
+# Loadout (per-run equipment)
+var loadout_primary_weapon: String = ""
+var loadout_secondary_weapon: String = ""
+var loadout_throwable: String = ""
+var loadout_gear_feet: String = ""
+var loadout_gear_back: String = ""
+var loadout_gear_head: String = ""
+
+# XP / Level system
+var xp: int = 0
+var level: int = 1
+
+# When true, gameplay input (movement, abilities, etc.) should be blocked.
+var debug_input_blocked: bool = false
+
+@export var base_xp_to_level: int = 100
+@export var xp_growth_factor: float = 1.4
+
+# -------------------------------------------------------------------
+# TESTING OVERRIDES — exported values (ignored in final build)
+# -------------------------------------------------------------------
+@export var start_level: int = 1
+@export var start_xp: int = 0
+@export var start_essence: int = 0
+@export var start_gold_run: float = 0.0
+
+func _ready() -> void:
+	# Apply testing overrides
+	level = max(1, start_level)
+	xp = max(0, start_xp)
+	essence_total = max(0, start_essence)
+	gold_run = max(0.0, start_gold_run)
+	
+	# Emit signals so UI stays in sync
+	emit_signal("xp_changed", xp, level)
+	emit_signal("essence_changed", essence_total)
+	emit_signal("gold_run_changed", gold_run)
+	
+	_initialize_default_stash_and_loadout()
+	
+	if OS.is_debug_build():
+		var console_scene: PackedScene = load("res://Scenes/DebugConsole.tscn")
+		if console_scene:
+			var console_instance := console_scene.instantiate()
+			get_tree().root.call_deferred("add_child", console_instance)
+
+# --------------------------
+# Run currency (Gold)
+# --------------------------
+
+func reset_run_state() -> void:
+	# Reset all run-only data here
+	gold_run = 0.0
+	emit_signal("gold_run_changed", gold_run)
+
+func add_gold_run(amount: float) -> void:
+	if amount == 0.0:
+		return
+	gold_run += amount
+	emit_signal("gold_run_changed", gold_run)
+	print("GOLD (run): +", amount, " -> ", gold_run)
+
+func spend_gold_run(amount: float) -> bool:
+	if amount <= 0.0:
+		return true  # spending 0 is fine
+	if gold_run < amount:
+		return false
+	gold_run -= amount
+	emit_signal("gold_run_changed", gold_run)
+	print("GOLD (run): -", amount, " -> ", gold_run)
+	return true
+
+# --------------------------
+# Permanent currency (Essence)
+# --------------------------
+
+func add_essence(amount: int) -> void:
+	if amount <= 0:
+		return
+	essence_total += amount
+	emit_signal("essence_changed", essence_total)
+	print("ESSENCE: +", amount, " -> ", essence_total)
+
+func spend_essence(amount: int) -> bool:
+	if amount <= 0:
+		return true
+	if essence_total < amount:
+		return false
+	essence_total -= amount
+	emit_signal("essence_changed", essence_total)
+	print("ESSENCE: -", amount, " -> ", essence_total)
+	return true
+
+# --------------------------
+# XP / Level
+# --------------------------
+
+func get_xp_required_for_next_level() -> int:
+	# Basic exponential growth: 100, 140, 196, ...
+	var required := base_xp_to_level * pow(xp_growth_factor, level - 1)
+	return int(round(required))
+
+func add_xp(amount: int) -> void:
+	if amount <= 0:
+		return
+	xp += amount
+	var leveled_up: bool = false
+	while true:
+		var needed := get_xp_required_for_next_level()
+		if xp < needed:
+			break
+		xp -= needed
+		level += 1
+		leveled_up = true
+	emit_signal("xp_changed", xp, level)
+	if leveled_up:
+		print("LEVEL UP! Now level ", level)
+
+func go_to_tavern() -> void:
+	var scene := load(TAVERN_SCENE_PATH) as PackedScene
+	if scene:
+		get_tree().change_scene_to_packed(scene)
+	else:
+		push_warning("GameManager: TAVERN_SCENE_PATH is invalid: %s" % TAVERN_SCENE_PATH)
+
+func start_new_run() -> void:
+	var scene := load(RUN_SCENE_PATH) as PackedScene
+	if scene:
+		get_tree().change_scene_to_packed(scene)
+	else:
+		push_warning("GameManager: RUN_SCENE_PATH is invalid: %s" % RUN_SCENE_PATH)
+
+func on_player_died() -> void:
+	# Called when the player dies.
+	# Convert gold to essence before returning to tavern.
+	finalize_run_and_convert_gold()
+	print("GameManager: on_player_died() called -> going to Tavern")
+	go_to_tavern()
+
+# --------------------------
+# Stash and Loadout System
+# --------------------------
+
+func owns_item(category: String, id: String) -> bool:
+	match category:
+		"weapon":
+			return id in stash_weapons
+		"throwable":
+			return id in stash_throwables
+		"gear_feet":
+			return id in stash_gear_feet
+		"gear_back":
+			return id in stash_gear_back
+		"gear_head":
+			return id in stash_gear_head
+		_:
+			return false
+
+func unlock_item(category: String, id: String) -> void:
+	if owns_item(category, id):
+		return
+	
+	match category:
+		"weapon":
+			stash_weapons.append(id)
+		"throwable":
+			stash_throwables.append(id)
+		"gear_feet":
+			stash_gear_feet.append(id)
+		"gear_back":
+			stash_gear_back.append(id)
+		"gear_head":
+			stash_gear_head.append(id)
+
+func set_loadout_item(slot: String, id: String) -> bool:
+	# Safety: cannot equip items not in stash
+	var category := ""
+	match slot:
+		"primary", "secondary":
+			category = "weapon"
+		"throwable":
+			category = "throwable"
+		"gear_feet":
+			category = "gear_feet"
+		"gear_back":
+			category = "gear_back"
+		"gear_head":
+			category = "gear_head"
+		_:
+			return false
+	
+	if not owns_item(category, id):
+		return false
+	
+	match slot:
+		"primary":
+			loadout_primary_weapon = id
+		"secondary":
+			loadout_secondary_weapon = id
+		"throwable":
+			loadout_throwable = id
+		"gear_feet":
+			loadout_gear_feet = id
+		"gear_back":
+			loadout_gear_back = id
+		"gear_head":
+			loadout_gear_head = id
+	
+	return true
+
+func set_debug_input_blocked(blocked: bool) -> void:
+	debug_input_blocked = blocked
+
+func is_debug_input_blocked() -> bool:
+	return debug_input_blocked
+
+func finalize_run_and_convert_gold() -> void:
+	var essence_gain: int = int(floor(gold_run / GOLD_TO_ESSENCE_RATE))
+	if essence_gain > 0:
+		essence_total += essence_gain
+		emit_signal("essence_changed", essence_total)
+	
+	gold_run = 0.0
+	emit_signal("gold_run_changed", gold_run)
+	reset_run_state()
+
+# -------------------------------------------------------------------
+# Item purchase helpers (shop uses Essence + level + stash)
+# -------------------------------------------------------------------
+
+func _build_purchase_result(success: bool, reason: String, item: Dictionary) -> Dictionary:
+	return {
+		"success": success,
+		"reason": reason,
+		"item": item,
+	}
+
+func can_purchase_item(item_id: String) -> Dictionary:
+	# Validate that the item exists in the ItemDatabase
+	if not ItemDatabase.item_exists(item_id):
+		return _build_purchase_result(false, "unknown_item", {})
+
+	var item: Dictionary = ItemDatabase.get_item(item_id)
+
+	# Category is required so we know which stash bucket it belongs to
+	var category: String = item.get("category", "")
+	if category == "":
+		return _build_purchase_result(false, "missing_category", item)
+
+	# If the player already owns this item in their stash, block purchase
+	if owns_item(category, item_id):
+		return _build_purchase_result(false, "already_owned", item)
+
+	# Level gating
+	var required_level: int = int(item.get("required_level", 1))
+	if level < required_level:
+		return _build_purchase_result(false, "level_too_low", item)
+
+	# Essence cost check
+	var cost: int = int(item.get("essence_cost", 0))
+	if cost < 0:
+		cost = 0
+
+	if essence_total < cost:
+		return _build_purchase_result(false, "insufficient_essence", item)
+
+	# If we get here, everything is OK to purchase
+	return _build_purchase_result(true, "ok", item)
+
+func purchase_item_with_essence(item_id: String) -> Dictionary:
+	# First run validation without mutating any state
+	var check := can_purchase_item(item_id)
+
+	if not check.get("success", false):
+		# Just forward the failure information
+		return check
+
+	var item: Dictionary = check.get("item", {})
+	var category: String = item.get("category", "")
+	var cost: int = int(item.get("essence_cost", 0))
+	if cost < 0:
+		cost = 0
+
+	# Spend Essence (double-checking we actually can)
+	var spent := spend_essence(cost)
+	if not spent:
+		# In theory this shouldn't happen because can_purchase_item checks first,
+		# but we guard against race conditions / future changes.
+		return _build_purchase_result(false, "insufficient_essence", item)
+
+	# Unlock in stash using existing helper
+	unlock_item(category, item_id)
+
+	# Emit signal so UI / shop / stash screens can react
+	item_unlocked.emit(item_id, category)
+
+	return _build_purchase_result(true, "purchased", item)
+
+# --------------------------
+# Initialization
+# --------------------------
+
+func _initialize_default_stash_and_loadout() -> void:
+	# Sync stash with default items from ItemDatabase (autoload)
+	var starter_items: Array = ItemDatabase.get_items_unlocked_by_default()
+	
+	for item in starter_items:
+		var id: String = item.get("id", "")
+		var category: String = item.get("category", "")
+		
+		if id != "" and category != "":
+			if not owns_item(category, id):
+				unlock_item(category, id)
+	
+	# Initialize loadout with defaults if empty
+	# Primary weapon
+	if loadout_primary_weapon == "" or not ItemDatabase.item_exists(loadout_primary_weapon):
+		if ItemDatabase.item_exists("weapon_pistol"):
+			loadout_primary_weapon = "weapon_pistol"
+	
+	# Secondary weapon and throwable - leave empty for now
+	# (loadout_secondary_weapon and loadout_throwable remain empty)
+	
+	# Gear slots
+	if loadout_gear_feet == "" or not ItemDatabase.item_exists(loadout_gear_feet):
+		if ItemDatabase.item_exists("gear_feet_boots_basic"):
+			loadout_gear_feet = "gear_feet_boots_basic"
+	
+	if loadout_gear_back == "" or not ItemDatabase.item_exists(loadout_gear_back):
+		if ItemDatabase.item_exists("gear_back_harness_basic"):
+			loadout_gear_back = "gear_back_harness_basic"
+	
+	if loadout_gear_head == "" or not ItemDatabase.item_exists(loadout_gear_head):
+		if ItemDatabase.item_exists("gear_head_cap_basic"):
+			loadout_gear_head = "gear_head_cap_basic"
+```
+
+---
+
+## Progression System Scripts
+
+### `item_database.gd`
+**Location:** `game/Scripts/item_database.gd`  
+**Extends:** `Node`  
+**Function:** Centralized item metadata database autoload. Defines all game items (weapons, throwables, gear) with their properties.
+
+```gdscript
+extends Node
+
+# This script is used as an Autoload singleton named "ItemDatabase"
+
+const CATEGORY_WEAPON := "weapon"
+const CATEGORY_THROWABLE := "throwable"
+const CATEGORY_GEAR_FEET := "gear_feet"
+const CATEGORY_GEAR_BACK := "gear_back"
+const CATEGORY_GEAR_HEAD := "gear_head"
+
+# Items are deliberately simple for now. We only have a pistol implemented,
+# but we define a few future items so the systems are ready.
+#
+# Fields:
+# - id: string key
+# - category: one of the CATEGORY_* constants above
+# - display_name: UI name
+# - description: flavour text
+# - essence_cost: cost in permanent Essence
+# - required_level: minimum player level to unlock
+# - slot: which loadout slot it conceptually occupies (primary, secondary, throwable, gear_feet, gear_back, gear_head)
+# - unlocked_by_default: whether the player should start with this item already in their stash
+const ITEMS := {
+	# Weapons
+	"weapon_pistol": {
+		"id": "weapon_pistol",
+		"category": CATEGORY_WEAPON,
+		"display_name": "Standard Pistol",
+		"description": "Reliable sidearm with decent damage and crit chance.",
+		"essence_cost": 0,
+		"required_level": 1,
+		"slot": "primary",
+		"unlocked_by_default": true,
+	},
+
+	# Throwables (placeholder – logic will come later)
+	"throwable_grenade_basic": {
+		"id": "throwable_grenade_basic",
+		"category": CATEGORY_THROWABLE,
+		"display_name": "Basic Grenade",
+		"description": "Simple explosive. Placeholder stats for now.",
+		"essence_cost": 5,
+		"required_level": 2,
+		"slot": "throwable",
+		"unlocked_by_default": false,
+	},
+
+	# Gear – Feet
+	"gear_feet_boots_basic": {
+		"id": "gear_feet_boots_basic",
+		"category": CATEGORY_GEAR_FEET,
+		"display_name": "Worn Boots",
+		"description": "Basic boots. Future home for movement buffs.",
+		"essence_cost": 3,
+		"required_level": 1,
+		"slot": "gear_feet",
+		"unlocked_by_default": true,
+	},
+
+	# Gear – Back (future wings live here)
+	"gear_back_harness_basic": {
+		"id": "gear_back_harness_basic",
+		"category": CATEGORY_GEAR_BACK,
+		"display_name": "Simple Harness",
+		"description": "Back slot placeholder. Will support wings later.",
+		"essence_cost": 4,
+		"required_level": 1,
+		"slot": "gear_back",
+		"unlocked_by_default": false,
+	},
+
+	# Gear – Head
+	"gear_head_cap_basic": {
+		"id": "gear_head_cap_basic",
+		"category": CATEGORY_GEAR_HEAD,
+		"display_name": "Worn Cap",
+		"description": "Basic headgear. Future crit/movement buffs etc.",
+		"essence_cost": 3,
+		"required_level": 1,
+		"slot": "gear_head",
+		"unlocked_by_default": false,
+	},
+}
+
+func item_exists(id: String) -> bool:
+	return id in ITEMS
+
+func get_item(id: String) -> Dictionary:
+	if id in ITEMS:
+		return ITEMS[id]
+	return {}
+
+func get_all_items() -> Array:
+	var out: Array = []
+	for item in ITEMS.values():
+		out.append(item)
+	return out
+
+func get_items_for_category(category: String) -> Array:
+	var out: Array = []
+	for item in ITEMS.values():
+		if item.get("category", "") == category:
+			out.append(item)
+	return out
+
+func get_items_unlocked_by_default() -> Array:
+	var out: Array = []
+	for item in ITEMS.values():
+		if item.get("unlocked_by_default", false):
+			out.append(item)
+	return out
+```
+
+### `shop_ui.gd`
+**Location:** `game/Scripts/shop_ui.gd`  
+**Extends:** `CanvasLayer`  
+**Function:** Shop UI manager for purchasing items with Essence currency and level gating.
+
+```gdscript
+extends CanvasLayer
+
+@onready var panel: Panel = $Panel
+@onready var title_label: Label = $Panel/Margin/VBox/TitleLabel
+@onready var essence_label: Label = $Panel/Margin/VBox/EssenceLabel
+@onready var item_list: ItemList = $Panel/Margin/VBox/ItemList
+@onready var details_label: Label = $Panel/Margin/VBox/DetailsLabel
+@onready var buy_button: Button = $Panel/Margin/VBox/Buttons/BuyButton
+@onready var close_button: Button = $Panel/Margin/VBox/Buttons/CloseButton
+
+var _item_ids: Array[String] = []
+var _current_index: int = -1
+var _player: Node = null
+
+func _ready() -> void:
+	visible = false
+	panel.visible = true
+
+	title_label.text = "Bartender's Shop"
+
+	# Connect UI signals
+	if not buy_button.pressed.is_connected(_on_buy_pressed):
+		buy_button.pressed.connect(_on_buy_pressed)
+	if not close_button.pressed.is_connected(_on_close_pressed):
+		close_button.pressed.connect(_on_close_pressed)
+	if not item_list.item_selected.is_connected(_on_item_selected):
+		item_list.item_selected.connect(_on_item_selected)
+
+	# Connect to GameManager signals (autoload)
+	var gm = GameManager
+	if gm.has_signal("essence_changed") and not gm.essence_changed.is_connected(_on_essence_changed):
+		gm.essence_changed.connect(_on_essence_changed)
+	if gm.has_signal("item_unlocked") and not gm.item_unlocked.is_connected(_on_item_unlocked):
+		gm.item_unlocked.connect(_on_item_unlocked)
+
+	# Initialize essence label from current state if fields exist
+	if "essence_total" in gm:
+		_on_essence_changed(gm.essence_total)
+
+	_refresh_items()
+
+func _apply_mouse_mode_for_ui(opening: bool) -> void:
+	# Find and cache the player in the "player" group
+	if _player == null or not is_instance_valid(_player):
+		var players := get_tree().get_nodes_in_group("player")
+		if players.size() > 0:
+			_player = players[0]
+		else:
+			_player = null
+
+	# Prefer the player's helper, but fall back to direct Input calls
+	if _player != null and _player.has_method("set_ui_mouse_mode"):
+		_player.set_ui_mouse_mode(opening)
+	else:
+		if opening:
+			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		else:
+			Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
+
+func open() -> void:
+	visible = true
+	_apply_mouse_mode_for_ui(true)
+
+	# Refresh list in case state changed while closed
+	_refresh_items()
+
+	if item_list.item_count > 0:
+		item_list.select(0)
+		_on_item_selected(0)
+
+	# Optional: give focus to ItemList for keyboard navigation
+	item_list.grab_focus()
+
+func close() -> void:
+	visible = false
+	_apply_mouse_mode_for_ui(false)
+
+func _on_close_pressed() -> void:
+	close()
+
+func _on_essence_changed(current_essence: int) -> void:
+	essence_label.text = "Essence: %d" % current_essence
+
+func _on_item_unlocked(_item_id: String, _category: String) -> void:
+	# Simply refresh the list when something is unlocked
+	_refresh_items()
+
+func _refresh_items() -> void:
+	var gm = GameManager
+	var items: Array = ItemDatabase.get_all_items()
+
+	_item_ids.clear()
+	item_list.clear()
+
+	# Stable sort: by required_level ascending, then by name
+	items.sort_custom(func(a, b):
+		var lvl_a: int = int(a.get("required_level", 1))
+		var lvl_b: int = int(b.get("required_level", 1))
+		if lvl_a == lvl_b:
+			var name_a: String = str(a.get("display_name", a.get("id", "")))
+			var name_b: String = str(b.get("display_name", b.get("id", "")))
+			return name_a < name_b
+		return lvl_a < lvl_b
+	)
+
+	for item in items:
+		var id: String = item.get("id", "")
+		if id == "":
+			continue
+
+		var item_name: String = str(item.get("display_name", id))
+		var category: String = str(item.get("category", ""))
+		var required_level: int = int(item.get("required_level", 1))
+		var cost: int = int(item.get("essence_cost", 0))
+
+		var owned: bool = gm.owns_item(category, id)
+		var player_level: int = int(gm.level) if "level" in gm else 1
+		var essence: int = int(gm.essence_total) if "essence_total" in gm else 0
+
+		var status: String
+
+		if owned:
+			status = "[OWNED]"
+		elif player_level < required_level:
+			status = "[LOCKED Lv %d]" % required_level
+		elif essence < cost:
+			status = "[NEEDS %d]" % cost
+		else:
+			status = "[BUY]"
+
+		var display_text := "%s %s  -  %d Essence (Lv %d)" % [status, item_name, cost, required_level]
+		item_list.add_item(display_text)
+		_item_ids.append(id)
+
+	_current_index = -1
+	_update_buy_button_state()
+
+func _on_item_selected(index: int) -> void:
+	_current_index = index
+	_update_details_label()
+	_update_buy_button_state()
+
+func _update_details_label() -> void:
+	details_label.text = ""
+
+	if _current_index < 0 or _current_index >= _item_ids.size():
+		return
+
+	var id: String = _item_ids[_current_index]
+	var item: Dictionary = ItemDatabase.get_item(id)
+
+	var item_name: String = str(item.get("display_name", id))
+	var description: String = str(item.get("description", ""))
+	var required_level: int = int(item.get("required_level", 1))
+	var cost: int = int(item.get("essence_cost", 0))
+
+	details_label.text = "%s\n\nCost: %d Essence\nRequired Level: %d\n\n%s" % [
+		item_name,
+		cost,
+		required_level,
+		description
+	]
+
+func _update_buy_button_state() -> void:
+	if _current_index < 0 or _current_index >= _item_ids.size():
+		buy_button.disabled = true
+		return
+
+	var gm = GameManager
+	var id: String = _item_ids[_current_index]
+	var item: Dictionary = ItemDatabase.get_item(id)
+	var category: String = str(item.get("category", ""))
+
+	var required_level: int = int(item.get("required_level", 1))
+	var cost: int = int(item.get("essence_cost", 0))
+
+	var owned: bool = gm.owns_item(category, id)
+	var player_level: int = int(gm.level) if "level" in gm else 1
+	var essence: int = int(gm.essence_total) if "essence_total" in gm else 0
+
+	var can_buy: bool = (not owned) and (player_level >= required_level) and (essence >= cost)
+	buy_button.disabled = not can_buy
+
+func _on_buy_pressed() -> void:
+	if _current_index < 0 or _current_index >= _item_ids.size():
+		return
+
+	var id: String = _item_ids[_current_index]
+
+	# Attempt purchase. We don't rely on return shape; we just refresh UI afterward.
+	GameManager.purchase_item_with_essence(id)
+
+	_refresh_items()
+	_update_details_label()
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not visible:
+		return
+
+	if event.is_action_pressed("ui_cancel"):
+		close()
+```
+
+### `debug_console.gd`
+**Location:** `game/Scripts/debug_console.gd`  
+**Extends:** `CanvasLayer`  
+**Function:** Debug console with command system for testing and modifying game state (debug builds only).
+
+```gdscript
+extends CanvasLayer
+
+@onready var log_label: RichTextLabel = $Panel/Margin/VBox/Log
+@onready var input_line: LineEdit = $Panel/Margin/VBox/Input
+
+var _gm: Node = null
+
+func _ready() -> void:
+	# Remove the console entirely in non-debug builds
+	if not OS.is_debug_build():
+		queue_free()
+		return
+
+	_gm = GameManager
+	visible = false
+
+	# Basic setup
+	log_label.clear()
+	log_label.mouse_filter = Control.MOUSE_FILTER_STOP
+
+	# Click in the log focuses the input
+	if not log_label.gui_input.is_connected(_on_log_gui_input):
+		log_label.gui_input.connect(_on_log_gui_input)
+
+	# Enter submits commands
+	if not input_line.text_submitted.is_connected(_on_input_submitted):
+		input_line.text_submitted.connect(_on_input_submitted)
+
+	# ESC while typing closes the console
+	if not input_line.gui_input.is_connected(_on_input_gui_input):
+		input_line.gui_input.connect(_on_input_gui_input)
+
+	print_line("Debug console ready. Press F2 to toggle. Type 'help' for commands.")
+
+func _toggle() -> void:
+	visible = not visible
+
+	# Block/unblock gameplay input while console is visible
+	if _gm == null:
+		_gm = GameManager
+	if _gm != null and _gm.has_method("set_debug_input_blocked"):
+		_gm.set_debug_input_blocked(visible)
+
+	if visible:
+		# Reset and focus input when opening
+		input_line.text = ""
+		input_line.grab_focus()
+		input_line.caret_column = 0
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_F2:
+			_toggle()
+			get_viewport().set_input_as_handled()
+			return
+
+		if not visible:
+			return
+
+		if event.keycode == KEY_ESCAPE:
+			_toggle()
+			get_viewport().set_input_as_handled()
+			return
+
+func _on_log_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed:
+		input_line.grab_focus()
+		input_line.caret_column = input_line.text.length()
+
+func _on_input_gui_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_ESCAPE:
+			_toggle()
+			get_viewport().set_input_as_handled()
+
+func _on_input_submitted(text: String) -> void:
+	var cmd_line := text.strip_edges()
+
+	if cmd_line.is_empty():
+		# Keep console open and ready even on empty submit
+		input_line.text = ""
+		input_line.grab_focus()
+		input_line.caret_column = 0
+		return
+
+	print_line("> " + cmd_line)
+	input_line.text = ""
+
+	_execute_command(cmd_line)
+
+	# Best-effort: keep input ready for the next command
+	input_line.grab_focus()
+	input_line.caret_column = 0
+
+func print_line(text: String) -> void:
+	if log_label != null:
+		log_label.append_text(text + "\n")
+		log_label.scroll_to_line(log_label.get_line_count() - 1)
+	print("[DebugConsole] " + text)
+
+# -------------------------------------------------------------------
+# Command parsing
+# -------------------------------------------------------------------
+
+func _execute_command(cmd_line: String) -> void:
+	var parts: Array = cmd_line.split(" ", false)
+	if parts.is_empty():
+		return
+
+	var cmd: String = parts[0].to_lower()
+
+	match cmd:
+		"help":
+			_print_help()
+		"give_gold":
+			_cmd_give_gold(parts)
+		"give_essence":
+			_cmd_give_essence(parts)
+		"set_level":
+			_cmd_set_level(parts)
+		"set_xp":
+			_cmd_set_xp(parts)
+		"unlock_all":
+			_cmd_unlock_all()
+		"give", "set":
+			_cmd_friendly_alias(parts)
+		_:
+			print_line("Error: Unknown command. Type 'help' for commands.")
+
+func _print_help() -> void:
+	print_line("Available commands:")
+	print_line("  help")
+	print_line("  give_gold <amount>")
+	print_line("  give_essence <amount>")
+	print_line("  set_level <level>")
+	print_line("  set_xp <amount>")
+	print_line("  unlock_all")
+	print_line("")
+	print_line("Aliases:")
+	print_line("  give gold <amount>")
+	print_line("  give essence <amount>")
+	print_line("  set level <level>")
+	print_line("  set xp <amount>")
+
+func _parse_int(parts: Array, index: int, default_value: int) -> int:
+	if index >= parts.size():
+		return default_value
+	var s: String = str(parts[index])
+	if not s.is_valid_int():
+		return default_value
+	return int(s)
+
+func _parse_float(parts: Array, index: int, default_value: float) -> float:
+	if index >= parts.size():
+		return default_value
+	var s: String = str(parts[index])
+	if not s.is_valid_float():
+		return default_value
+	return float(s)
+
+# -------------------------------------------------------------------
+# Individual commands
+# -------------------------------------------------------------------
+
+func _cmd_give_gold(parts: Array) -> void:
+	var gm = GameManager
+	if gm == null:
+		print_line("Error: GameManager not available.")
+		return
+
+	var amount: float = _parse_float(parts, 1, 0.0)
+	if amount <= 0.0:
+		print_line("Usage: give_gold <amount>")
+		return
+
+	if not gm.has_method("add_gold_run"):
+		print_line("Error: GameManager.add_gold_run() not found. Command failed.")
+		return
+
+	gm.add_gold_run(amount)
+	print_line("Success: Gave gold_run: %.2f" % amount)
+
+func _cmd_give_essence(parts: Array) -> void:
+	var gm = GameManager
+	if gm == null:
+		print_line("Error: GameManager not available.")
+		return
+
+	var amount: int = _parse_int(parts, 1, 0)
+	if amount <= 0:
+		print_line("Usage: give_essence <amount>")
+		return
+
+	if not gm.has_method("add_essence"):
+		print_line("Error: GameManager.add_essence() not found. Command failed.")
+		return
+
+	gm.add_essence(amount)
+	print_line("Success: Gave essence: %d" % amount)
+
+func _cmd_set_level(parts: Array) -> void:
+	var gm = GameManager
+	if gm == null:
+		print_line("Error: GameManager not available.")
+		return
+
+	var lvl: int = _parse_int(parts, 1, -1)
+	if lvl <= 0:
+		print_line("Usage: set_level <level>")
+		return
+
+	lvl = max(1, lvl)
+	gm.level = lvl
+	if gm.has_signal("xp_changed"):
+		gm.xp_changed.emit(gm.xp, gm.level)
+
+	print_line("Success: Set level to %d" % lvl)
+
+func _cmd_set_xp(parts: Array) -> void:
+	var gm = GameManager
+	if gm == null:
+		print_line("Error: GameManager not available.")
+		return
+
+	var amount: int = _parse_int(parts, 1, -1)
+	if amount < 0:
+		print_line("Usage: set_xp <amount>")
+		return
+
+	gm.xp = amount
+	if gm.has_signal("xp_changed"):
+		gm.xp_changed.emit(gm.xp, gm.level)
+
+	print_line("Success: Set XP to %d" % amount)
+
+func _cmd_unlock_all() -> void:
+	var gm = GameManager
+	if gm == null:
+		print_line("Error: GameManager not available.")
+		return
+
+	var items: Array = ItemDatabase.get_all_items()
+	var count := 0
+
+	for item in items:
+		var id: String = item.get("id", "")
+		var category: String = item.get("category", "")
+		if id == "" or category == "":
+			continue
+
+		if gm.has_method("owns_item") and gm.owns_item(category, id):
+			continue
+
+		if gm.has_method("unlock_item"):
+			gm.unlock_item(category, id)
+			count += 1
+		if gm.has_signal("item_unlocked"):
+			gm.item_unlocked.emit(id, category)
+
+	print_line("Success: Unlocked %d items." % count)
+
+func _cmd_friendly_alias(parts: Array) -> void:
+	if parts.is_empty():
+		return
+
+	var root: String = parts[0].to_lower()
+
+	if root == "give":
+		if parts.size() < 3:
+			print_line("Usage: give gold <amount> | give essence <amount>")
+			return
+		var target: String = parts[1].to_lower()
+		match target:
+			"gold":
+				_cmd_give_gold(["give_gold", parts[2]])
+			"essence":
+				_cmd_give_essence(["give_essence", parts[2]])
+			_:
+				print_line("Error: Unknown give target. Use 'gold' or 'essence'.")
+	elif root == "set":
+		if parts.size() < 3:
+			print_line("Usage: set level <value> | set xp <value>")
+			return
+		var target: String = parts[1].to_lower()
+		match target:
+			"level":
+				_cmd_set_level(["set_level", parts[2]])
+			"xp":
+				_cmd_set_xp(["set_xp", parts[2]])
+			_:
+				print_line("Error: Unknown set target. Use 'level' or 'xp'.")
+```
+
+---
+
+## Tavern Scripts
+
+### `tavern_bartender.gd`
+**Location:** `game/Scripts/tavern_bartender.gd`  
+**Extends:** `Node2D`  
+**Function:** Bartender interaction script that opens the shop UI when the player interacts.
+
+```gdscript
+extends Node2D
+
+signal interacted(player: Node)
+
+@export var shop_ui_path: NodePath
+
+@onready var area: Area2D = $InteractionArea
+
+@onready var prompt_label: Label = $PromptLabel
+
+var _player_in_range: Node = null
+var _shop_ui: Node = null
+
+func _ready() -> void:
+	# Ensure prompt starts hidden
+	if prompt_label:
+		prompt_label.visible = false
+	
+	# Connect area signals
+	if area:
+		if not area.body_entered.is_connected(_on_area_body_entered):
+			area.body_entered.connect(_on_area_body_entered)
+		if not area.body_exited.is_connected(_on_area_body_exited):
+			area.body_exited.connect(_on_area_body_exited)
+	
+	# Resolve shop UI reference
+	if shop_ui_path != NodePath() and has_node(shop_ui_path):
+		_shop_ui = get_node(shop_ui_path)
+	else:
+		_shop_ui = null
+
+func _process(_delta: float) -> void:
+	if _player_in_range and Input.is_action_just_pressed("interact"):
+		emit_signal("interacted", _player_in_range)
+		print("Bartender: interacted with by ", _player_in_range.name)
+		
+		if _shop_ui != null and _shop_ui.has_method("open"):
+			_shop_ui.open()
+
+func _on_area_body_entered(body: Node) -> void:
+	var target := body
+	
+	# Handle cases where colliders are child nodes of the player
+	if not target.is_in_group("player") and target.get_parent() and target.get_parent().is_in_group("player"):
+		target = target.get_parent()
+	
+	if target.is_in_group("player"):
+		_player_in_range = target
+		if prompt_label:
+			prompt_label.visible = true
+
+func _on_area_body_exited(body: Node) -> void:
+	var target := body
+	
+	if not target.is_in_group("player") and target.get_parent() and target.get_parent().is_in_group("player"):
+		target = target.get_parent()
+	
+	if target == _player_in_range:
+		_player_in_range = null
+		if prompt_label:
+			prompt_label.visible = false
+```
+
+### `tavern_run_door.gd`
+**Location:** `game/Scripts/tavern_run_door.gd`  
+**Extends:** `Node2D`  
+**Function:** Run door interaction script that starts a new run when the player interacts.
+
+```gdscript
+extends Node2D
+
+signal door_used(player: Node)
+
+@onready var area: Area2D = $InteractionArea
+
+@onready var prompt_label: Label = $PromptLabel
+
+var _player_in_range: Node = null
+
+func _ready() -> void:
+	# Ensure prompt starts hidden
+	if prompt_label:
+		prompt_label.visible = false
+	
+	# Connect area signals
+	if area:
+		if not area.body_entered.is_connected(_on_area_body_entered):
+			area.body_entered.connect(_on_area_body_entered)
+		if not area.body_exited.is_connected(_on_area_body_exited):
+			area.body_exited.connect(_on_area_body_exited)
+
+func _process(_delta: float) -> void:
+	if _player_in_range and Input.is_action_just_pressed("interact"):
+		emit_signal("door_used", _player_in_range)
+		print("RunDoor: door used by ", _player_in_range.name)
+
+		# Ask GameManager to start a new run (load the run scene)
+		if GameManager != null and GameManager.has_method("start_new_run"):
+			GameManager.start_new_run()
+		else:
+			push_warning("RunDoor: GameManager autoload not available; cannot start new run.")
+
+func _on_area_body_entered(body: Node) -> void:
+	var target := body
+	
+	# Handle cases where colliders are child nodes of the player
+	if not target.is_in_group("player") and target.get_parent() and target.get_parent().is_in_group("player"):
+		target = target.get_parent()
+	
+	if target.is_in_group("player"):
+		_player_in_range = target
+		if prompt_label:
+			prompt_label.visible = true
+
+func _on_area_body_exited(body: Node) -> void:
+	var target := body
+	
+	if not target.is_in_group("player") and target.get_parent() and target.get_parent().is_in_group("player"):
+		target = target.get_parent()
+	
+	if target == _player_in_range:
+		_player_in_range = null
+		if prompt_label:
+			prompt_label.visible = false
+```
+
+---
+
 ## Summary
 
 This document contains all scripts in the Shoot To Kill project, organized by category:
 
-- **Player Scripts**: Player controller with movement, health, shooting, animation, aiming, and gold currency
-- **Enemy Scripts**: Enemy AI with state machine, health, contact damage, flash effects, health bars, and loot drops
-- **Weapon Scripts**: Base weapon class, pistol implementation, and bullet physics
-- **UI Scripts**: HUD manager and crosshair system with outer pulse effect
+- **Core System Scripts**: GameManager autoload for currency, XP, progression, purchases, scene management, and debug input blocking
+- **Player Scripts**: Player controller with movement, health, shooting, weapon switching (primary/secondary), animation, aiming, gold currency, debug input blocking, and UI mouse mode
+- **Enemy Scripts**: Enemy AI with state machine, health, contact damage, flash effects, health bars, loot drops, and XP rewards
+- **Weapon Scripts**: Base weapon class (with fire rate, full-auto, spread, hand offsets), pistol implementation (semi-auto), assault rifle implementation (full-auto capable), and bullet physics
+- **UI Scripts**: HUD manager (health, currency, XP), shop UI, debug console, and crosshair system with outer pulse effect
+- **Progression System Scripts**: ItemDatabase for item metadata, ShopUI for purchasing items
+- **Tavern Scripts**: Bartender interaction (opens shop) and RunDoor interaction (starts new run)
 - **Effect Scripts**: Damage numbers, hit impacts, blood effects, and coin pickups
 - **Camera Scripts**: Camera shake system
 

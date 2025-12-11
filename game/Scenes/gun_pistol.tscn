@@ -1,0 +1,24 @@
+[gd_scene load_steps=4 format=3 uid="uid://duh7q7p0edxka"]
+
+[ext_resource type="Script" uid="uid://dakluwdougot" path="res://Scripts/weapons/weapon_pistol.gd" id="1_pfemm"]
+[ext_resource type="Texture2D" uid="uid://dyi8jobr25q3q" path="res://Assets/Sprites/Guns/Revolver.png" id="2_r6akn"]
+[ext_resource type="AudioStream" uid="uid://dne8kvkrh7lsv" path="res://Assets/Sounds/pistol_shot.mp3" id="3_6vfxt"]
+
+[node name="Gun" type="Node2D"]
+script = ExtResource("1_pfemm")
+shake_strength = 0.0
+shake_duration = 0.0
+aim_dot_lerp_speed = 15.0
+
+[node name="Muzzle" type="Marker2D" parent="."]
+position = Vector2(11, 0)
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+z_index = 1
+position = Vector2(-3, 0)
+texture = ExtResource("2_r6akn")
+
+[node name="GunAudio" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("3_6vfxt")
+volume_db = -15.0
+attenuation = 1.464086

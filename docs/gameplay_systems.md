@@ -32,18 +32,54 @@ Weapons live under `scripts/weapons/`.
 - Lower values = heavier aiming (heavier weapons).
 - Player queries weapon via `get_aim_dot_lerp_speed()` method.
 
+### Fire Rate & Full-Auto System
+- **Fire Rate** (`fire_rate: float`):
+  - Shots per second. Set to `0.0` for no internal cooldown.
+  - Internal cooldown timer (`_time_until_next_shot`) managed automatically.
+  - `can_fire() -> bool`: Returns true if weapon can fire (cooldown expired).
+  - `_apply_fire_cooldown()`: Applies cooldown after firing (calculated as `1.0 / fire_rate`).
+  - Cooldown timer decremented in `_process(delta)` each frame.
+- **Full-Auto Toggle** (`is_full_auto: bool`):
+  - When `true`, weapon can fire continuously while trigger is held.
+  - When `false`, weapon requires individual clicks per shot (semi-auto).
+  - Player handles input mode (hold vs click) based on this flag.
+
+### Bullet Spread System
+- **Spread Degrees** (`spread_degrees: float`):
+  - Range: 0.0-45.0 degrees (Inspector slider).
+  - Maximum random angular deviation for each bullet.
+  - `0.0` = perfectly accurate (no spread).
+  - Higher values = less accurate (more spread).
+- **Application**:
+  - Applied in `spawn_bullet()` before computing bullet direction.
+  - Formula: `random_angle = deg_to_rad(randf_range(-spread_degrees, spread_degrees))`
+  - Direction rotated by random angle: `dir = dir.rotated(random_angle)`.
+
+### Per-Weapon Hand Offsets
+- **Hand Offset Exports**:
+  - `hand_offset_right: Vector2` (default Vector2(8, -2))
+  - `hand_offset_left: Vector2` (default Vector2(8, 2))
+  - Configured per-weapon in Inspector.
+  - Player queries these offsets when positioning gun relative to arm.
+- **Usage**:
+  - Player checks if `gun is WeaponBase`, then uses weapon's offsets.
+  - Falls back to default constants for non-WeaponBase weapons.
+
 ### Bullet Spawning
 - `spawn_bullet(target_global_pos)`:
   - Gets `dmg_info` from `_roll_damage()`.
+  - Computes initial direction vector.
+  - **Applies bullet spread** if `spread_degrees > 0.0`.
   - Instantiates bullet.
   - Sets:
-    - `bullet.direction`
+    - `bullet.direction` (after spread applied)
     - `bullet.rotation`
     - `bullet.damage = dmg_info.damage`
     - `bullet.is_crit = dmg_info.is_crit`
   - Positions at `Muzzle`.
   - One-shot sound plays with slight pitch randomization.
   - Emits `fired` signal for camera shake.
+  - **Applies fire rate cooldown** via `_apply_fire_cooldown()`.
 
 ---
 
@@ -106,11 +142,12 @@ Bullets use raycasting each frame to avoid tunneling.
 - **Arm and Gun Aiming**:
   - Arm sprite (`$WeaponHolder/WeaponBobOffset/ArmSprite`) rotates independently toward aim point.
   - Gun positioned relative to arm using `hand_offset` rotated by arm rotation.
-  - Per-facing offsets for weapon holder position and gun hand offset.
+  - **Per-weapon hand offsets**: Each weapon defines its own `hand_offset_right` and `hand_offset_left` (configurable in Inspector).
+  - Per-facing offsets for weapon holder position.
   - Arm visual flip helper prevents upside-down appearance when aiming across top.
 - **Per-Facing Offsets**:
   - Weapon holder: `weapon_base_offset + Vector2(8, 0)` when facing left, `weapon_base_offset` when facing right.
-  - Gun hand offset: `Vector2(8, 2)` when facing left, `Vector2(8, -2)` when facing right.
+  - Gun hand offset: Queried from weapon's `hand_offset_left` / `hand_offset_right` when weapon is WeaponBase, falls back to defaults (`Vector2(8, 2)` / `Vector2(8, -2)`) otherwise.
 - **Crosshair Integration**:
   - Player references `$"../Crosshair"` node.
   - Gun and arm both aim at weighted dot position.
@@ -119,6 +156,38 @@ Bullets use raycasting each frame to avoid tunneling.
   - OS mouse cursor is hidden in `_ready()` using `Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)`.
   - Crosshair root node follows mouse position each frame: `crosshair.global_position = mouse_pos`.
   - Crosshair visually replaces the system cursor for better game immersion.
+
+### Weapon Switching System
+- **Weapon Slots**:
+  - `primary_weapon_scene: PackedScene` - Exported scene reference for primary weapon.
+  - `secondary_weapon_scene: PackedScene` - Exported scene reference for secondary weapon.
+  - `current_weapon_slot: int` - Current active slot (0 = unspecified, 1 = primary, 2 = secondary).
+- **Switching Logic**:
+  - Press `weapon_1` (key 1) to switch to primary weapon.
+  - Press `weapon_2` (key 2) to switch to secondary weapon.
+  - Only switches if target weapon scene is assigned and not already active.
+  - Switching preserves weapon position/rotation using global transform.
+- **Equipping Process**:
+  - `_equip_weapon_scene(scene: PackedScene)`: Instantiates new weapon, preserves transform, reconnects signals.
+  - `_disconnect_weapon_signals()`: Disconnects old weapon's signals before removal.
+  - `_connect_weapon_signals()`: Connects new weapon's `fired` signal to player and crosshair.
+  - Old weapon instance is queued for deletion before new one is added.
+- **Initialization**:
+  - If `primary_weapon_scene` is assigned in `_ready()`, automatically equips it and sets `current_weapon_slot = 1`.
+  - Otherwise, connects signals to existing gun in scene (backward compatibility).
+
+### Shooting System
+- **Fire Mode Detection**:
+  - Player checks if `gun is WeaponBase and gun.is_full_auto`.
+  - Full-auto weapons: Uses `Input.is_action_pressed("shoot")` (hold to fire).
+  - Semi-auto weapons: Uses `Input.is_action_just_pressed("shoot")` (click to fire).
+- **Shot Execution**:
+  - Calls `gun.try_shoot(aim_point)` using weighted dot position.
+  - `try_shoot()` returns `bool` indicating if shot actually fired.
+  - Respects WeaponBase cooldown (via `can_fire()` check in weapon implementation).
+- **Visual Feedback**:
+  - Visual kickback only applied when `try_shoot()` returns `true` (shot actually fired).
+  - Kickback direction: opposite to shot direction along aim line.
 
 ### Weapon Bob System
 - **Per-Animation Bob Arrays**: Frame-by-frame vertical offsets stored in arrays:
@@ -167,6 +236,22 @@ Bullets use raycasting each frame to avoid tunneling.
   - All gold is tracked centrally in GameManager.
 - Player is added to `"player"` group in `_ready()` for coin pickup detection.
 
+### Debug Input Blocking
+- Player respects `GameManager.debug_input_blocked` flag.
+- **Movement Blocking**: In `_physics_process()`, early returns and zeros velocity when debug input is blocked.
+- **Input Ignoring**: In `_input()`, ignores input events (without consuming them) when debug input is blocked.
+- **Shooting Blocking**: In `_process()`, prevents firing when debug input is blocked.
+- Allows debug console to receive input while blocking player actions.
+
+### UI Mouse Mode Helper
+- `set_ui_mouse_mode(is_ui_open: bool)`: Helper function for UI systems (like Shop).
+- When UI opens (`is_ui_open = true`):
+  - Sets OS cursor to visible (`Input.MOUSE_MODE_VISIBLE`).
+  - Hides in-game crosshair.
+- When UI closes (`is_ui_open = false`):
+  - Sets OS cursor to hidden (`Input.MOUSE_MODE_HIDDEN`).
+  - Shows in-game crosshair.
+
 ### Signals
 - `health_changed(current_health, max_health)` - emitted on health change.
 - `died` - emitted when player dies.
@@ -178,18 +263,20 @@ Bullets use raycasting each frame to avoid tunneling.
 
 ### Architecture
 - **Autoload Singleton**: Configured as AutoLoad in Project Settings (name: `GameManager`).
-- Centralized management for currency, XP/level, and scene transitions.
+- Centralized management for currency, XP/level, permanent progression, scene transitions, and debug input blocking.
 
 ### Currency Management
 - **Run Gold** (`gold_run: float`):
-  - Currently permanent (no reset on death).
+  - Run-only currency (reset on death or new run start).
   - `add_gold_run(amount)`: Adds gold and emits `gold_run_changed` signal.
   - `spend_gold_run(amount)`: Attempts to spend gold, returns success/failure.
-  - `reset_run_state()`: Resets run-only data (currently unused).
+  - `reset_run_state()`: Resets run-only data (including gold).
+  - **Gold → Essence Conversion**: On player death, gold is converted to permanent essence at a rate of `GOLD_TO_ESSENCE_RATE` (default 100.0 gold = 1 essence).
 - **Essence** (`essence_total: int`):
   - Permanent currency kept between runs.
   - `add_essence(amount)`: Adds essence and emits `essence_changed` signal.
   - `spend_essence(amount)`: Attempts to spend essence, returns success/failure.
+  - Earned by converting run gold at the end of each run.
 
 ### XP/Level System
 - **Variables**:
@@ -208,6 +295,58 @@ Bullets use raycasting each frame to avoid tunneling.
   - Emits `xp_changed(current_xp, current_level)` signal.
   - Prints "LEVEL UP!" message when level increases.
 
+### Permanent Progression System
+- **Stash (Permanent Inventory)**:
+  - `stash_weapons: Array[String]`: Owned weapons (permanent).
+  - `stash_throwables: Array[String]`: Owned throwables (permanent).
+  - `stash_gear_feet: Array[String]`: Owned foot gear (permanent).
+  - `stash_gear_back: Array[String]`: Owned back gear (permanent).
+  - `stash_gear_head: Array[String]`: Owned head gear (permanent).
+  - `owns_item(category, id)`: Checks if player owns an item in their stash.
+  - `unlock_item(category, id)`: Adds an item to the appropriate stash array.
+- **Loadout (Per-Run Equipment)**:
+  - `loadout_primary_weapon: String`: Selected primary weapon ID.
+  - `loadout_secondary_weapon: String`: Selected secondary weapon ID.
+  - `loadout_throwable: String`: Selected throwable ID.
+  - `loadout_gear_feet: String`: Selected foot gear ID.
+  - `loadout_gear_back: String`: Selected back gear ID.
+  - `loadout_gear_head: String`: Selected head gear ID.
+  - `set_loadout_item(slot, id)`: Assigns an item to a loadout slot (validates item is in stash).
+- **Initialization**:
+  - `_initialize_default_stash_and_loadout()`: Called in `_ready()`.
+  - Syncs stash with items marked `unlocked_by_default` in ItemDatabase.
+  - Sets default loadout items if slots are empty.
+- **Gold Conversion on Death**:
+  - `finalize_run_and_convert_gold()`: Converts run gold to essence at `GOLD_TO_ESSENCE_RATE`.
+  - Called automatically in `on_player_died()` before transitioning to Tavern.
+  - Formula: `essence_gain = floor(gold_run / GOLD_TO_ESSENCE_RATE)`.
+
+### Item Purchase System
+- **Purchase Validation**:
+  - `can_purchase_item(item_id)`: Validates if an item can be purchased.
+    - Returns Dictionary with `success`, `reason`, and `item` fields.
+    - Checks: item exists, not already owned, level requirement met, sufficient essence.
+  - `purchase_item_with_essence(item_id)`: Attempts to purchase an item.
+    - Validates via `can_purchase_item()` first.
+    - Spends essence, unlocks item in stash, emits `item_unlocked` signal.
+    - Returns purchase result Dictionary.
+
+### Testing/Debug Overrides
+- **Exported Testing Variables** (for debugging in editor):
+  - `start_level: int` (default 1): Override starting level.
+  - `start_xp: int` (default 0): Override starting XP.
+  - `start_essence: int` (default 0): Override starting essence.
+  - `start_gold_run: float` (default 0.0): Override starting run gold.
+- Applied in `_ready()` before other initialization.
+
+### Debug Input Blocking
+- **Variables**:
+  - `debug_input_blocked: bool`: Global flag for blocking gameplay input.
+- **Methods**:
+  - `set_debug_input_blocked(blocked: bool)`: Sets the input blocking flag.
+  - `is_debug_input_blocked() -> bool`: Returns current blocking state.
+- Used by debug console to prevent player movement/actions while console is open.
+
 ### Scene Management
 - **Scene Paths**:
   - `TAVERN_SCENE_PATH`: `"res://Scenes/Tavern.tscn"`
@@ -215,12 +354,16 @@ Bullets use raycasting each frame to avoid tunneling.
 - **Methods**:
   - `go_to_tavern()`: Loads and transitions to Tavern scene.
   - `start_new_run()`: Loads and transitions to run scene (starts new run).
-  - `on_player_died()`: Called on player death, transitions to Tavern.
+  - `on_player_died()`: Called on player death. Converts gold to essence, then transitions to Tavern.
+- **Debug Console Initialization**:
+  - In debug builds only, instantiates `DebugConsole.tscn` in `_ready()`.
+  - Uses deferred `add_child` to avoid "busy setting up children" errors.
 
 ### Signals
 - `gold_run_changed(current_gold: float)` - emitted when run gold changes.
 - `essence_changed(current_essence: int)` - emitted when essence changes.
 - `xp_changed(current_xp: int, current_level: int)` - emitted when XP or level changes.
+- `item_unlocked(item_id: String, category: String)` - emitted when an item is purchased/unlocked.
 
 ---
 
@@ -564,6 +707,137 @@ On enemy hit:
 - Lightweight design: no RigidBody2D physics, only position updates in `_process()`.
 - Efficient for many coins on screen simultaneously.
 
+## ItemDatabase System
+
+### Architecture
+- **Autoload Singleton**: Configured as AutoLoad in Project Settings (name: `ItemDatabase`).
+- Centralized item metadata database for all game items (weapons, throwables, gear).
+- Defines item properties: display names, descriptions, costs, level requirements, default unlock status.
+
+### Item Metadata Structure
+- Each item is a Dictionary with the following fields:
+  - `id: String`: Unique identifier (e.g., "weapon_pistol").
+  - `category: String`: Item category (weapon, throwable, gear_feet, gear_back, gear_head).
+  - `display_name: String`: UI display name.
+  - `description: String`: Item description/flavor text.
+  - `essence_cost: int`: Cost in permanent Essence currency.
+  - `required_level: int`: Minimum player level required to unlock.
+  - `slot: String`: Loadout slot this item occupies (primary, secondary, throwable, gear_feet, gear_back, gear_head).
+  - `unlocked_by_default: bool`: Whether item starts in player's stash.
+
+### Category Constants
+- `CATEGORY_WEAPON`: Weapon items.
+- `CATEGORY_THROWABLE`: Throwable items.
+- `CATEGORY_GEAR_FEET`: Foot gear items.
+- `CATEGORY_GEAR_BACK`: Back gear items.
+- `CATEGORY_GEAR_HEAD`: Head gear items.
+
+### Helper Functions
+- `item_exists(id: String) -> bool`: Checks if an item ID exists in the database.
+- `get_item(id: String) -> Dictionary`: Returns item dictionary, or empty Dictionary if not found.
+- `get_all_items() -> Array`: Returns array of all item dictionaries.
+- `get_items_for_category(category: String) -> Array`: Returns items in a specific category.
+- `get_items_unlocked_by_default() -> Array`: Returns items that should start unlocked.
+
+### Default Items
+- **Weapons**: Standard Pistol (unlocked by default, free).
+- **Throwables**: Basic Grenade (locked, level 2, costs 5 essence).
+- **Gear - Feet**: Worn Boots (unlocked by default, costs 3 essence).
+- **Gear - Back**: Simple Harness (locked, level 1, costs 4 essence).
+- **Gear - Head**: Worn Cap (locked, level 1, costs 3 essence).
+
+---
+
+## Shop System
+
+### Architecture
+- **ShopUI Scene**: Separate CanvasLayer scene (`ShopUI.tscn`) with script `shop_ui.gd`.
+- Purchases items using Essence currency with level gating.
+- Displays all items from ItemDatabase with status indicators.
+
+### UI Components
+- **ItemList**: Displays all items with status prefixes:
+  - `[OWNED]`: Player already owns the item.
+  - `[LOCKED Lv X]`: Player level too low.
+  - `[NEEDS X]`: Insufficient Essence.
+  - `[BUY]`: Item can be purchased.
+- **DetailsLabel**: Shows selected item's name, description, cost, and level requirement.
+- **BuyButton**: Enabled only when item can be purchased.
+- **EssenceLabel**: Displays current Essence amount.
+- **CloseButton**: Closes the shop UI.
+
+### Item Display
+- Items sorted by required level (ascending), then by name.
+- Each item shows: status prefix, display name, essence cost, and required level.
+- Selection updates details panel and buy button state.
+
+### Purchase Flow
+- `_on_buy_pressed()`: Calls `GameManager.purchase_item_with_essence(item_id)`.
+- Purchase validates: item exists, not owned, level met, sufficient Essence.
+- On success: Essence spent, item unlocked in stash, `item_unlocked` signal emitted.
+- Shop UI refreshes automatically on purchase.
+
+### Mouse Mode Integration
+- `_apply_mouse_mode_for_ui(opening: bool)`: Toggles OS cursor visibility and crosshair.
+- When shop opens: OS cursor visible, crosshair hidden.
+- When shop closes: OS cursor hidden, crosshair visible.
+- Calls `player.set_ui_mouse_mode()` if available, falls back to direct Input calls.
+
+### Signal Connections
+- Connects to `GameManager.essence_changed` to update Essence display.
+- Connects to `GameManager.item_unlocked` to refresh item list when items are unlocked.
+
+### Input Handling
+- ESC key closes the shop (via `ui_cancel` action).
+- ItemList supports keyboard navigation.
+
+---
+
+## Debug Console System
+
+### Architecture
+- **DebugConsole Scene**: Separate CanvasLayer scene (`DebugConsole.tscn`) with script `debug_console.gd`.
+- Only available in debug builds (`OS.is_debug_build()`).
+- Auto-instanced by GameManager in debug builds only.
+
+### Console Features
+- **Toggle**: F2 key toggles console visibility.
+- **Close**: ESC key closes the console (single press, even when typing).
+- **Input Focus**: Clicking log area focuses input line.
+- **Command Execution**: Enter key submits commands.
+- **Auto-Focus**: Input line stays focused after command execution for rapid command entry.
+
+### Input Blocking
+- When console is visible, blocks gameplay input via `GameManager.set_debug_input_blocked(true)`.
+- Player movement, shooting, and other actions are disabled while console is open.
+- UI elements (like the console itself) can still receive input.
+
+### Available Commands
+- `help`: Displays command list and usage.
+- `give_gold <amount>`: Adds gold to run currency.
+- `give_essence <amount>`: Adds Essence to permanent currency.
+- `set_level <level>`: Sets player level (minimum 1).
+- `set_xp <amount>`: Sets player XP amount.
+- `unlock_all`: Unlocks all items in ItemDatabase that aren't already owned.
+- **Aliases**:
+  - `give gold <amount>`: Alias for `give_gold`.
+  - `give essence <amount>`: Alias for `give_essence`.
+  - `set level <level>`: Alias for `set_level`.
+  - `set xp <amount>`: Alias for `set_xp`.
+
+### Command Feedback
+- **Success Messages**: Prefixed with "Success:" for successful operations.
+- **Error Messages**: Prefixed with "Error:" for failures or invalid commands.
+- All output also prints to Godot console with "[DebugConsole]" prefix.
+
+### Implementation Details
+- Uses `_unhandled_input()` for F2 toggle and ESC close when console not focused.
+- Uses `input_line.gui_input` connection for ESC handling when LineEdit has focus.
+- Commands use helper functions for parsing integers/floats with validation.
+- Console logging via `print_line()` function appends to RichTextLabel and scrolls automatically.
+
+---
+
 ## Tavern System
 
 ### Architecture
@@ -580,7 +854,11 @@ On enemy hit:
   - Shows prompt when player enters interaction area.
   - Hides prompt when player exits.
   - Emits `interacted(player)` signal when player presses "interact".
-  - Generic implementation (no shop logic yet).
+  - **Shop Integration**: Opens ShopUI when interacted with (if `shop_ui_path` is set).
+- **Shop UI Reference**:
+  - `shop_ui_path` (NodePath export): Path to ShopUI node in scene.
+  - Resolved in `_ready()` and stored in `_shop_ui`.
+  - Calls `_shop_ui.open()` when player interacts.
 
 ### RunDoor (`tavern_run_door.gd`)
 - **Node Structure**:
@@ -591,7 +869,7 @@ On enemy hit:
   - Shows prompt when player enters interaction area.
   - Hides prompt when player exits.
   - Emits `door_used(player)` signal when player presses "interact".
-  - RunDoor Calls `GameManager.start_new_run()` to load run scene.
+  - Calls `GameManager.start_new_run()` to load run scene.
 
 ### Interaction Pattern
 - Both scripts use the same pattern:

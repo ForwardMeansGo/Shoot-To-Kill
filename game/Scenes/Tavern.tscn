@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=4 uid="uid://bqygnbemul856"]
+[gd_scene load_steps=15 format=4 uid="uid://bqygnbemul856"]
 
 [ext_resource type="PackedScene" uid="uid://bfwdbdyqwvha" path="res://Scenes/player.tscn" id="1_w0j5r"]
 [ext_resource type="PackedScene" uid="uid://bgl3dadmuu1pk" path="res://Scenes/HUD.tscn" id="2_8ea0k"]
@@ -9,6 +9,7 @@
 [ext_resource type="FontFile" uid="uid://dvvf0f0kdg8he" path="res://Assets/Font/windows_command_prompt.ttf" id="7_8kk68"]
 [ext_resource type="Script" uid="uid://cjx3a0nc6afid" path="res://Scripts/tavern_run_door.gd" id="8_hm7uq"]
 [ext_resource type="Texture2D" uid="uid://m167w3rpunal" path="res://Assets/Sprites/Enviroment/TavernLeaveDoor1.png" id="9_mm7un"]
+[ext_resource type="PackedScene" uid="uid://bpr25xdlfxchw" path="res://Scenes/shopUI.tscn" id="10_d72gp"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_vsbuj"]
 texture = ExtResource("4_rp73c")
@@ -52,6 +53,7 @@ tile_set = SubResource("TileSet_5ebr1")
 z_index = -1
 position = Vector2(-447, -13)
 script = ExtResource("5_5ebr1")
+shop_ui_path = NodePath("../CanvasLayer/ShopUI")
 
 [node name="Sprite2D" type="Sprite2D" parent="Bartender"]
 scale = Vector2(0.14328645, 0.14328645)
@@ -97,3 +99,8 @@ offset_bottom = -7.0
 scale = Vector2(0.46883082, 0.46883082)
 theme_override_fonts/font = ExtResource("7_8kk68")
 text = "E: Start Run"
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="ShopUI" parent="CanvasLayer" instance=ExtResource("10_d72gp")]
+visible = false

@@ -1,0 +1,28 @@
+[gd_scene load_steps=2 format=3 uid="uid://bwt0aqd84tg0k"]
+
+[ext_resource type="Script" uid="uid://cxlq6kiqia2wo" path="res://Scripts/debug_console.gd" id="1_cc3mf"]
+
+[node name="DebugConsole" type="CanvasLayer"]
+script = ExtResource("1_cc3mf")
+
+[node name="Panel" type="Panel" parent="."]
+offset_top = 80.0
+offset_right = 587.0
+offset_bottom = 315.0
+
+[node name="Margin" type="MarginContainer" parent="Panel"]
+layout_mode = 0
+offset_right = 585.0
+offset_bottom = 235.0
+
+[node name="VBox" type="VBoxContainer" parent="Panel/Margin"]
+layout_mode = 2
+alignment = 2
+
+[node name="Log" type="RichTextLabel" parent="Panel/Margin/VBox"]
+custom_minimum_size = Vector2(0, 200)
+layout_mode = 2
+tab_size = 10
+
+[node name="Input" type="LineEdit" parent="Panel/Margin/VBox"]
+layout_mode = 2
