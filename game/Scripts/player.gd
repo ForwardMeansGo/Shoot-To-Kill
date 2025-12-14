@@ -4,6 +4,7 @@ extends CharacterBody2D
 @onready var weapon_bob_offset: Node2D = $WeaponHolder/WeaponBobOffset
 @onready var gun: Node2D = $WeaponHolder/WeaponBobOffset/Gun
 @onready var arm_sprite: Sprite2D = $WeaponHolder/WeaponBobOffset/ArmSprite
+@onready var back_arm_sprite: Sprite2D = $WeaponHolder/WeaponBobOffset/BackArmSprite
 @onready var anim_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var cam: Camera2D = $Camera2D
 @onready var crosshair = $"../Crosshair"
@@ -70,6 +71,10 @@ func _ready() -> void:
 		current_weapon_slot = 1
 	else:
 		_connect_weapon_signals()
+
+	# Initialize back arm sprite visibility
+	if back_arm_sprite != null:
+		back_arm_sprite.visible = false
 
 func _connect_weapon_signals() -> void:
 	if gun == null:
@@ -237,6 +242,26 @@ func _process(delta: float) -> void:
 
 				gun.global_position = arm_sprite.global_position + hand_offset.rotated(arm_sprite.global_rotation)
 
+		# Back arm follows the gun for two-handed weapons
+		if back_arm_sprite != null:
+			back_arm_sprite.visible = false
+
+			if gun != null and gun is WeaponBase and gun.is_two_handed:
+				# Choose support offset based on facing
+				var support_offset: Vector2 = Vector2.ZERO
+				if facing_left:
+					support_offset = gun.support_hand_offset_left
+				else:
+					support_offset = gun.support_hand_offset_right
+
+				var gun_pos: Vector2 = gun.global_position
+				var gun_rot: float = gun.global_rotation
+				var rotated_support: Vector2 = support_offset.rotated(gun_rot)
+
+				back_arm_sprite.global_position = gun_pos + rotated_support
+				back_arm_sprite.rotation = gun_rot
+				back_arm_sprite.visible = true
+
 		# Tell the weapon which way we're facing so it can flip its sprite
 		if gun.has_method("set_facing_left"):
 			gun.set_facing_left(facing_left)
@@ -304,7 +329,27 @@ func _update_animation() -> void:
 		# Moving opposite to where we're facing = backwards
 		var is_backwards := move_dir != 0 and move_dir != facing_dir
 
-		var desired_anim := "run_backwards" if is_backwards else "run"
+		var desired_anim: String = ""
+
+		if is_backwards:
+			# Backwards run
+			var backwards_name := "run_backwards"
+			if _is_current_weapon_two_handed():
+				if anim_sprite.sprite_frames != null and anim_sprite.sprite_frames.has_animation("run_backwards_noarms"):
+					backwards_name = "run_backwards_noarms"
+			desired_anim = backwards_name
+		else:
+			# Forward run
+			var can_use_noarms := false
+			if _is_current_weapon_two_handed():
+				if anim_sprite.sprite_frames != null and anim_sprite.sprite_frames.has_animation("run_noarms"):
+					can_use_noarms = true
+
+			if can_use_noarms:
+				desired_anim = "run_noarms"
+			else:
+				desired_anim = "run"
+
 		if anim_sprite.animation != desired_anim:
 			anim_sprite.play(desired_anim)
 
@@ -316,8 +361,13 @@ func _update_animation() -> void:
 
 	# 5) Idle on ground
 	else:
-		if anim_sprite.animation != "idle":
-			anim_sprite.play("idle")
+		var idle_name := "idle"
+		if _is_current_weapon_two_handed():
+			if anim_sprite.sprite_frames != null and anim_sprite.sprite_frames.has_animation("idle_noarms"):
+				idle_name = "idle_noarms"
+
+		if anim_sprite.animation != idle_name:
+			anim_sprite.play(idle_name)
 
 	# 6) Update floor state for next frame
 	was_on_floor = on_floor_now
@@ -332,11 +382,11 @@ func _get_weapon_bob_for_current_frame() -> float:
 	var offsets: Array = []
 
 	match anim_name:
-		"idle":
+		"idle", "idle_noarms":
 			offsets = weapon_bob_idle
-		"run":
+		"run", "run_noarms":
 			offsets = weapon_bob_run
-		"run_backwards":
+		"run_backwards", "run_backwards_noarms":
 			offsets = weapon_bob_run_backwards
 		"jump", "fall":
 			offsets = weapon_bob_jump
@@ -383,6 +433,11 @@ func get_current_dot_lerp_speed() -> float:
 	if gun != null and gun.has_method("get_aim_dot_lerp_speed"):
 		return gun.get_aim_dot_lerp_speed()
 	return default_aim_dot_lerp_speed
+
+func _is_current_weapon_two_handed() -> bool:
+	if gun != null and gun is WeaponBase:
+		return gun.is_two_handed
+	return false
 
 func set_ui_mouse_mode(is_ui_open: bool) -> void:
 	# When a full-screen UI like the shop is open, we want the OS cursor visible

@@ -1,5 +1,7 @@
 extends CharacterBody2D
 
+signal died
+
 @export var move_speed: float = 45.0
 @export var gravity: float = 1200.0
 @export var max_health: int = 100
@@ -97,6 +99,9 @@ func _physics_process(delta: float) -> void:
 		sprite.flip_h = dir_x < 0.0
 
 	move_and_slide()
+
+func set_player(p: Node2D) -> void:
+	player = p
 
 func take_damage(amount: int, is_crit: bool = false) -> void:
 	if state == State.DEAD:
@@ -218,12 +223,15 @@ func die() -> void:
 	# Prevent death logic from running multiple times
 	if state == State.DEAD:
 		return
-	
+
 	state = State.DEAD
 	_drop_loot()
 
 	# Award XP for killing this enemy
 	if xp_reward > 0 and GameManager != null and GameManager.has_method("add_xp"):
 		GameManager.add_xp(xp_reward)
-	
+
+	# Notify listeners (WaveManager, future systems) that this enemy died
+	emit_signal("died")
+
 	queue_free()

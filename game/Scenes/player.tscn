@@ -1,4 +1,4 @@
-[gd_scene load_steps=34 format=3 uid="uid://bfwdbdyqwvha"]
+[gd_scene load_steps=53 format=3 uid="uid://bfwdbdyqwvha"]
 
 [ext_resource type="Script" uid="uid://drjjsaa5rp213" path="res://Scripts/player.gd" id="1_cvnsp"]
 [ext_resource type="Texture2D" uid="uid://bgcchtio0vxpo" path="res://Assets/Sprites/Player/Hood Knight/Hood Knight Jump-Sheet.png" id="2_3smsa"]
@@ -8,6 +8,9 @@
 [ext_resource type="Texture2D" uid="uid://dey2gmvr4o8a7" path="res://Assets/Sprites/Player/Hood Knight/Hood Knight Left Arm.png" id="5_3smsa"]
 [ext_resource type="PackedScene" uid="uid://co772dyycp4p" path="res://Scenes/gun_assault_rifle.tscn" id="5_8erm5"]
 [ext_resource type="Texture2D" uid="uid://ch403cm7rry4p" path="res://Assets/Sprites/Player/Hood Knight/Hood Knight Run NO LEFT ARM-Sheet.png" id="6_3smsa"]
+[ext_resource type="Texture2D" uid="uid://bbvostnmqkyxg" path="res://Assets/Sprites/Player/Hood Knight/Hood Knight Idle NO ARMS-Sheet.png" id="6_gymyn"]
+[ext_resource type="Texture2D" uid="uid://cwhgrx140gb6p" path="res://Assets/Sprites/Player/Hood Knight/Hood Knight Run NO AMRS-Sheet.png" id="7_tx1dd"]
+[ext_resource type="Texture2D" uid="uid://cdh4xhtyensea" path="res://Assets/Sprites/Player/Hood Knight/Hood Knight Right Arm.png" id="8_f1ek2"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_wpjfl"]
 atlas = ExtResource("2_3smsa")
@@ -31,6 +34,22 @@ region = Rect2(64, 0, 32, 36)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_gymyn"]
 atlas = ExtResource("3_3smsa")
+region = Rect2(96, 0, 32, 36)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_nv4vc"]
+atlas = ExtResource("6_gymyn")
+region = Rect2(0, 0, 32, 36)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_8gxox"]
+atlas = ExtResource("6_gymyn")
+region = Rect2(32, 0, 32, 36)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_11gg7"]
+atlas = ExtResource("6_gymyn")
+region = Rect2(64, 0, 32, 36)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_qpa8y"]
+atlas = ExtResource("6_gymyn")
 region = Rect2(96, 0, 32, 36)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_2ijsl"]
@@ -101,6 +120,54 @@ region = Rect2(32, 0, 32, 36)
 atlas = ExtResource("6_3smsa")
 region = Rect2(0, 0, 32, 36)
 
+[sub_resource type="AtlasTexture" id="AtlasTexture_sbwqj"]
+atlas = ExtResource("7_tx1dd")
+region = Rect2(160, 0, 32, 36)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_xwi16"]
+atlas = ExtResource("7_tx1dd")
+region = Rect2(128, 0, 32, 36)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_sweqm"]
+atlas = ExtResource("7_tx1dd")
+region = Rect2(96, 0, 32, 36)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_ph33w"]
+atlas = ExtResource("7_tx1dd")
+region = Rect2(64, 0, 32, 36)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_7ldla"]
+atlas = ExtResource("7_tx1dd")
+region = Rect2(32, 0, 32, 36)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_r7t2e"]
+atlas = ExtResource("7_tx1dd")
+region = Rect2(0, 0, 32, 36)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_83xs0"]
+atlas = ExtResource("7_tx1dd")
+region = Rect2(0, 0, 32, 36)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_ypfnu"]
+atlas = ExtResource("7_tx1dd")
+region = Rect2(32, 0, 32, 36)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_xuaoq"]
+atlas = ExtResource("7_tx1dd")
+region = Rect2(64, 0, 32, 36)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_wohnl"]
+atlas = ExtResource("7_tx1dd")
+region = Rect2(96, 0, 32, 36)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_36dho"]
+atlas = ExtResource("7_tx1dd")
+region = Rect2(128, 0, 32, 36)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_yh6i2"]
+atlas = ExtResource("7_tx1dd")
+region = Rect2(160, 0, 32, 36)
+
 [sub_resource type="SpriteFrames" id="SpriteFrames_igrcy"]
 animations = [{
 "frames": [{
@@ -129,6 +196,23 @@ animations = [{
 }],
 "loop": true,
 "name": &"idle",
+"speed": 7.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_nv4vc")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_8gxox")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_11gg7")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_qpa8y")
+}],
+"loop": true,
+"name": &"idle_noarms",
 "speed": 7.0
 }, {
 "frames": [{
@@ -201,6 +285,52 @@ animations = [{
 "loop": true,
 "name": &"run_backwards",
 "speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_sbwqj")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_xwi16")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_sweqm")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_ph33w")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_7ldla")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_r7t2e")
+}],
+"loop": true,
+"name": &"run_backwards_noarms",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_83xs0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_ypfnu")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_xuaoq")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_wohnl")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_36dho")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_yh6i2")
+}],
+"loop": true,
+"name": &"run_noarms",
+"speed": 10.0
 }]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_v0iea"]
@@ -218,7 +348,7 @@ kick_strength = 3.0
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
 position = Vector2(0, 5)
 sprite_frames = SubResource("SpriteFrames_igrcy")
-animation = &"run"
+animation = &"run_backwards_noarms"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 position = Vector2(0, 7.0108814)
@@ -232,11 +362,17 @@ position = Vector2(6, -1)
 
 [node name="Gun" parent="WeaponHolder/WeaponBobOffset" instance=ExtResource("5_8erm5")]
 position = Vector2(-1, 4)
+support_hand_offset_right = Vector2(0, 0)
 
 [node name="ArmSprite" type="Sprite2D" parent="WeaponHolder/WeaponBobOffset"]
 z_index = 2
 position = Vector2(-10, 8)
 texture = ExtResource("5_3smsa")
+
+[node name="BackArmSprite" type="Sprite2D" parent="WeaponHolder/WeaponBobOffset"]
+z_index = -1
+position = Vector2(-11, 6)
+texture = ExtResource("8_f1ek2")
 
 [node name="Camera2D" type="Camera2D" parent="."]
 zoom = Vector2(4, 4)

@@ -1,13 +1,18 @@
 extends CanvasLayer
 
 @onready var health_bar: TextureProgressBar = $PlayerHealthBar
-@onready var gold_label: Label = $CurrencyPanel/GoldBox/GoldLabel
-@onready var essence_label: Label = $CurrencyPanel/EssenceBox/EssenceLabel
-@onready var xp_label: Label = $CurrencyPanel/XPBox/XPLabel
+@onready var gold_label: Label = $InfoPanel/GoldBox/GoldLabel
+@onready var essence_label: Label = $InfoPanel/EssenceBox/EssenceLabel
+@onready var xp_label: Label = $InfoPanel/XPBox/XPLabel
+@onready var wave_label: Label = $InfoPanel/WaveBox/WaveLabel
+@onready var stats_box: Node = $InfoPanel/StatsBox
+@onready var monsters_killed_label: Label = $InfoPanel/StatsBox/MonstersKilledLabel
+@onready var monsters_remaining_label: Label = $InfoPanel/StatsBox/MonstersRemainingLabel
 @export var player_path: NodePath = ^"../Player"
 
 var player: Node = null
 var hp_tween: Tween = null
+var _wave_manager: Node = null
 
 func _ready() -> void:
 	# Find the player
@@ -72,6 +77,16 @@ func _ready() -> void:
 	else:
 		push_warning("HUD: GameManager autoload not available; currency/XP HUD will not update.")
 
+	# Hook into WaveManager for wave + monster stats
+	var root := get_tree().current_scene
+	if root != null and root.has_node("WaveManager"):
+		_wave_manager = root.get_node("WaveManager")
+
+		if _wave_manager.has_signal("wave_started") and not _wave_manager.wave_started.is_connected(_on_wave_started):
+			_wave_manager.wave_started.connect(_on_wave_started)
+	else:
+		_wave_manager = null
+
 func _on_player_health_changed(current: int, max: int) -> void:
 	if health_bar == null:
 		return
@@ -107,3 +122,22 @@ func _on_xp_changed(current_xp: int, current_level: int) -> void:
 	# Show both level and XP so the player sees progression.
 	# Example: "Lv 3  XP 42"
 	xp_label.text = "Lv %d  XP %d" % [current_level, current_xp]
+
+func _on_wave_started(wave_index: int) -> void:
+	if wave_label == null:
+		return
+	wave_label.text = "WAVE: %d" % wave_index
+
+func _process(delta: float) -> void:
+	if _wave_manager == null:
+		return
+
+	# Update monsters killed
+	if monsters_killed_label != null and _wave_manager.has_method("get_total_kills"):
+		var total_kills: int = _wave_manager.get_total_kills()
+		monsters_killed_label.text = "KILLS: %d" % total_kills
+
+	# Update monsters remaining in current wave
+	if monsters_remaining_label != null and _wave_manager.has_method("get_monsters_remaining"):
+		var remaining: int = _wave_manager.get_monsters_remaining()
+		monsters_remaining_label.text = "REMAINING: %d" % remaining

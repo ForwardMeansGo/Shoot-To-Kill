@@ -33,6 +33,11 @@ signal fired(shake_strength: float, shake_duration: float)
 @export var hand_offset_right: Vector2 = Vector2(8, -2)
 @export var hand_offset_left: Vector2 = Vector2(8, 2)
 
+# Two-handed weapon support
+@export var is_two_handed: bool = false
+@export var support_hand_offset_right: Vector2 = Vector2.ZERO
+@export var support_hand_offset_left: Vector2 = Vector2.ZERO
+
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var audio_player: AudioStreamPlayer2D = $GunAudio
 

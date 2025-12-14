@@ -15,6 +15,9 @@ is_full_auto = true
 spread_degrees = 3.0
 hand_offset_right = Vector2(11, -2)
 hand_offset_left = Vector2(11, 2)
+is_two_handed = true
+support_hand_offset_right = Vector2(-8, -1)
+support_hand_offset_left = Vector2(-8, -4)
 
 [node name="Muzzle" type="Marker2D" parent="."]
 position = Vector2(14, 0)
@@ -25,5 +28,5 @@ texture = ExtResource("2_tkimv")
 
 [node name="GunAudio" type="AudioStreamPlayer2D" parent="."]
 stream = ExtResource("3_18y2n")
-volume_db = -15.0
+volume_db = -30.0
 attenuation = 1.464086

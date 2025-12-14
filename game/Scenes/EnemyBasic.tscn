@@ -15,10 +15,10 @@ shader = ExtResource("3_pa2dr")
 shader_parameter/flash_amount = 0.0
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_1f0kj"]
-size = Vector2(9, 31)
+size = Vector2(10.5, 30)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_rfug7"]
-size = Vector2(14.29185, 33.571255)
+size = Vector2(12.148073, 32.311775)
 
 [node name="Enemy" type="CharacterBody2D" groups=["enemies"]]
 collision_layer = 4
@@ -29,7 +29,7 @@ flash_intensity = 0.8
 damage_bar_lag_duration = 0.5
 silver_coin_scene = ExtResource("3_kf507")
 gold_coin_scene = ExtResource("4_feubr")
-silver_drop_chance = 0.8
+silver_drop_chance = 0.9
 gold_drop_chance = 0.5
 xp_reward = 5
 
@@ -39,7 +39,7 @@ position = Vector2(19, 18)
 texture = ExtResource("3_rfug7")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-position = Vector2(17.5, 18.5)
+position = Vector2(19.25, 19)
 shape = SubResource("RectangleShape2D_1f0kj")
 
 [node name="HealthBar" type="TextureProgressBar" parent="."]
@@ -66,6 +66,6 @@ collision_layer = 4
 collision_mask = 2
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="DamageArea"]
-position = Vector2(17.000002, 17.895824)
+position = Vector2(19.5, 18.5)
 scale = Vector2(1.3993989, 0.9594026)
 shape = SubResource("RectangleShape2D_rfug7")

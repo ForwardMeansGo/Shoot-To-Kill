@@ -20,5 +20,5 @@ texture = ExtResource("2_r6akn")
 
 [node name="GunAudio" type="AudioStreamPlayer2D" parent="."]
 stream = ExtResource("3_6vfxt")
-volume_db = -15.0
+volume_db = -25.0
 attenuation = 1.464086
