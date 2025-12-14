@@ -18,6 +18,7 @@ extends CharacterBody2D
 @onready var weapon_bob_offset: Node2D = $WeaponHolder/WeaponBobOffset
 @onready var gun: Node2D = $WeaponHolder/WeaponBobOffset/Gun
 @onready var arm_sprite: Sprite2D = $WeaponHolder/WeaponBobOffset/ArmSprite
+@onready var back_arm_sprite: Sprite2D = $WeaponHolder/WeaponBobOffset/BackArmSprite
 @onready var anim_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var cam: Camera2D = $Camera2D
 @onready var crosshair = $"../Crosshair"
@@ -84,6 +85,10 @@ func _ready() -> void:
 		current_weapon_slot = 1
 	else:
 		_connect_weapon_signals()
+
+	# Initialize back arm sprite visibility
+	if back_arm_sprite != null:
+		back_arm_sprite.visible = false
 
 func _connect_weapon_signals() -> void:
 	if gun == null:
@@ -250,6 +255,26 @@ func _process(delta: float) -> void:
 
 				gun.global_position = arm_sprite.global_position + hand_offset.rotated(arm_sprite.global_rotation)
 
+		# Back arm follows the gun for two-handed weapons
+		if back_arm_sprite != null:
+			back_arm_sprite.visible = false
+
+			if gun != null and gun is WeaponBase and gun.is_two_handed:
+				# Choose support offset based on facing
+				var support_offset: Vector2 = Vector2.ZERO
+				if facing_left:
+					support_offset = gun.support_hand_offset_left
+				else:
+					support_offset = gun.support_hand_offset_right
+
+				var gun_pos: Vector2 = gun.global_position
+				var gun_rot: float = gun.global_rotation
+				var rotated_support: Vector2 = support_offset.rotated(gun_rot)
+
+				back_arm_sprite.global_position = gun_pos + rotated_support
+				back_arm_sprite.rotation = gun_rot
+				back_arm_sprite.visible = true
+
 		# Tell the weapon which way we're facing so it can flip its sprite
 		if gun.has_method("set_facing_left"):
 			gun.set_facing_left(facing_left)
@@ -317,7 +342,27 @@ func _update_animation() -> void:
 		# Moving opposite to where we're facing = backwards
 		var is_backwards := move_dir != 0 and move_dir != facing_dir
 
-		var desired_anim := "run_backwards" if is_backwards else "run"
+		var desired_anim: String = ""
+
+		if is_backwards:
+			# Backwards run
+			var backwards_name := "run_backwards"
+			if _is_current_weapon_two_handed():
+				if anim_sprite.sprite_frames != null and anim_sprite.sprite_frames.has_animation("run_backwards_noarms"):
+					backwards_name = "run_backwards_noarms"
+			desired_anim = backwards_name
+		else:
+			# Forward run
+			var can_use_noarms := false
+			if _is_current_weapon_two_handed():
+				if anim_sprite.sprite_frames != null and anim_sprite.sprite_frames.has_animation("run_noarms"):
+					can_use_noarms = true
+
+			if can_use_noarms:
+				desired_anim = "run_noarms"
+			else:
+				desired_anim = "run"
+
 		if anim_sprite.animation != desired_anim:
 			anim_sprite.play(desired_anim)
 
@@ -329,8 +374,13 @@ func _update_animation() -> void:
 
 	# 5) Idle on ground
 	else:
-		if anim_sprite.animation != "idle":
-			anim_sprite.play("idle")
+		var idle_name := "idle"
+		if _is_current_weapon_two_handed():
+			if anim_sprite.sprite_frames != null and anim_sprite.sprite_frames.has_animation("idle_noarms"):
+				idle_name = "idle_noarms"
+
+		if anim_sprite.animation != idle_name:
+			anim_sprite.play(idle_name)
 
 	# 6) Update floor state for next frame
 	was_on_floor = on_floor_now
@@ -345,11 +395,11 @@ func _get_weapon_bob_for_current_frame() -> float:
 	var offsets: Array = []
 
 	match anim_name:
-		"idle":
+		"idle", "idle_noarms":
 			offsets = weapon_bob_idle
-		"run":
+		"run", "run_noarms":
 			offsets = weapon_bob_run
-		"run_backwards":
+		"run_backwards", "run_backwards_noarms":
 			offsets = weapon_bob_run_backwards
 		"jump", "fall":
 			offsets = weapon_bob_jump
@@ -396,6 +446,11 @@ func get_current_dot_lerp_speed() -> float:
 	if gun != null and gun.has_method("get_aim_dot_lerp_speed"):
 		return gun.get_aim_dot_lerp_speed()
 	return default_aim_dot_lerp_speed
+
+func _is_current_weapon_two_handed() -> bool:
+	if gun != null and gun is WeaponBase:
+		return gun.is_two_handed
+	return false
 
 func set_ui_mouse_mode(is_ui_open: bool) -> void:
 	# When a full-screen UI like the shop is open, we want the OS cursor visible
@@ -458,10 +513,12 @@ func add_gold(amount: float) -> void:
 ### `enemy.gd`
 **Location:** `game/Scripts/enemies/enemy.gd`  
 **Extends:** `CharacterBody2D`  
-**Function:** Enemy AI controller with state machine, health, contact damage, flash effects, and health bars.
+**Function:** Enemy AI controller with state machine, health, contact damage, flash effects, health bars, died signal, and set_player method.
 
 ```gdscript
 extends CharacterBody2D
+
+signal died
 
 @export var move_speed: float = 45.0
 @export var gravity: float = 1200.0
@@ -560,6 +617,9 @@ func _physics_process(delta: float) -> void:
 		sprite.flip_h = dir_x < 0.0
 
 	move_and_slide()
+
+func set_player(p: Node2D) -> void:
+	player = p
 
 func take_damage(amount: int, is_crit: bool = false) -> void:
 	if state == State.DEAD:
@@ -688,6 +748,9 @@ func die() -> void:
 	# Award XP for killing this enemy
 	if xp_reward > 0 and GameManager != null and GameManager.has_method("add_xp"):
 		GameManager.add_xp(xp_reward)
+
+	# Notify listeners (WaveManager, future systems) that this enemy died
+	emit_signal("died")
 	
 	queue_free()
 ```
@@ -737,6 +800,11 @@ signal fired(shake_strength: float, shake_duration: float)
 # Per-weapon hand offsets (relative to the arm sprite)
 @export var hand_offset_right: Vector2 = Vector2(8, -2)
 @export var hand_offset_left: Vector2 = Vector2(8, 2)
+
+# Two-handed weapon support
+@export var is_two_handed: bool = false
+@export var support_hand_offset_right: Vector2 = Vector2.ZERO
+@export var support_hand_offset_left: Vector2 = Vector2.ZERO
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var audio_player: AudioStreamPlayer2D = $GunAudio
@@ -979,13 +1047,18 @@ func _handle_hit(body: Object) -> void:
 extends CanvasLayer
 
 @onready var health_bar: TextureProgressBar = $PlayerHealthBar
-@onready var gold_label: Label = $CurrencyPanel/GoldBox/GoldLabel
-@onready var essence_label: Label = $CurrencyPanel/EssenceBox/EssenceLabel
-@onready var xp_label: Label = $CurrencyPanel/XPBox/XPLabel
+@onready var gold_label: Label = $InfoPanel/GoldBox/GoldLabel
+@onready var essence_label: Label = $InfoPanel/EssenceBox/EssenceLabel
+@onready var xp_label: Label = $InfoPanel/XPBox/XPLabel
+@onready var wave_label: Label = $InfoPanel/WaveBox/WaveLabel
+@onready var stats_box: Node = $InfoPanel/StatsBox
+@onready var monsters_killed_label: Label = $InfoPanel/StatsBox/MonstersKilledLabel
+@onready var monsters_remaining_label: Label = $InfoPanel/StatsBox/MonstersRemainingLabel
 @export var player_path: NodePath = ^"../Player"
 
 var player: Node = null
 var hp_tween: Tween = null
+var _wave_manager: Node = null
 
 func _ready() -> void:
 	# Find the player
@@ -1050,6 +1123,16 @@ func _ready() -> void:
 	else:
 		push_warning("HUD: GameManager autoload not available; currency/XP HUD will not update.")
 
+	# Hook into WaveManager for wave + monster stats
+	var root := get_tree().current_scene
+	if root != null and root.has_node("WaveManager"):
+		_wave_manager = root.get_node("WaveManager")
+
+		if _wave_manager.has_signal("wave_started") and not _wave_manager.wave_started.is_connected(_on_wave_started):
+			_wave_manager.wave_started.connect(_on_wave_started)
+	else:
+		_wave_manager = null
+
 func _on_player_health_changed(current: int, max: int) -> void:
 	if health_bar == null:
 		return
@@ -1085,6 +1168,25 @@ func _on_xp_changed(current_xp: int, current_level: int) -> void:
 	# Show both level and XP so the player sees progression.
 	# Example: "Lv 3  XP 42"
 	xp_label.text = "Lv %d  XP %d" % [current_level, current_xp]
+
+func _on_wave_started(wave_index: int) -> void:
+	if wave_label == null:
+		return
+	wave_label.text = "WAVE: %d" % wave_index
+
+func _process(delta: float) -> void:
+	if _wave_manager == null:
+		return
+
+	# Update monsters killed
+	if monsters_killed_label != null and _wave_manager.has_method("get_total_kills"):
+		var total_kills: int = _wave_manager.get_total_kills()
+		monsters_killed_label.text = "KILLS: %d" % total_kills
+
+	# Update monsters remaining in current wave
+	if monsters_remaining_label != null and _wave_manager.has_method("get_monsters_remaining"):
+		var remaining: int = _wave_manager.get_monsters_remaining()
+		monsters_remaining_label.text = "REMAINING: %d" % remaining
 ```
 
 ### `crosshair.gd`
@@ -1165,6 +1267,313 @@ func on_weapon_fired(strength: float, duration: float) -> void:
 		outer_base_scale,
 		outer_pulse_duration
 	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+```
+
+---
+
+## Wave System Scripts
+
+### `wave_manager.gd`
+**Location:** `game/Scripts/wave_manager.gd`  
+**Extends:** `Node`  
+**Function:** Endless wave system with difficulty scaling, off-screen enemy spawning, kill tracking, and automatic wave progression.
+
+```gdscript
+extends Node
+
+signal wave_started(wave_index: int)
+signal wave_cleared(wave_index: int)
+
+const ENEMY_BASIC_SCENE := preload("res://Scenes/EnemyBasic.tscn")
+
+@export var base_break_duration: float = 15.0
+@export var base_target_concurrent: int = 4
+@export var max_target_concurrent: int = 25
+@export var base_total_basic: int = 6
+@export var total_basic_per_wave: int = 3
+@export var max_total_basic: int = 80
+@export var base_spawn_interval: float = 0.8
+@export var min_spawn_interval: float = 0.25
+@export var spawn_interval_decay_per_wave: float = 0.03
+
+var current_wave_index: int = 0
+var _current_wave_def: Dictionary = {}
+var _spawn_queue: Array = []  # each entry: { "scene": PackedScene, "spawn_group": String }
+var _spawn_index: int = 0
+var _active_enemies: int = 0
+var _spawn_points_by_group: Dictionary = {}  # String -> Array[Node2D]
+var _player: Node2D = null
+var _total_kills: int = 0
+
+@onready var _spawn_timer: Timer = Timer.new()
+@onready var _break_timer: Timer = Timer.new()
+
+func _ready() -> void:
+	# Configure spawn timer
+	_spawn_timer.one_shot = false
+	_spawn_timer.timeout.connect(_on_spawn_timer_timeout)
+	add_child(_spawn_timer)
+
+	# Configure break timer
+	_break_timer.one_shot = true
+	_break_timer.timeout.connect(_on_break_timer_timeout)
+	add_child(_break_timer)
+
+	# Scan the tree for spawn points
+	var root := get_tree().current_scene
+	if root != null and root.has_node("WaveSpawnPoints"):
+		var spawn_points_parent := root.get_node("WaveSpawnPoints")
+		for child in spawn_points_parent.get_children():
+			# Check if this child has the spawn_group property (indicates wave_spawn_point.gd script)
+			if "spawn_group" in child:
+				var group_name: String = str(child.spawn_group)
+				
+				if not _spawn_points_by_group.has(group_name):
+					_spawn_points_by_group[group_name] = []
+				_spawn_points_by_group[group_name].append(child)
+	
+	if _spawn_points_by_group.is_empty():
+		push_warning("WaveManager: No spawn points found! Add WaveSpawnPoints node with children that have wave_spawn_point.gd script.")
+
+	# Cache player reference for enemy AI
+	var players: Array = get_tree().get_nodes_in_group("player")
+	if players.size() > 0 and players[0] is Node2D:
+		_player = players[0]
+	else:
+		_player = null
+		push_warning("WaveManager: No player found in 'player' group; enemies will not move towards the player.")
+
+	# Start the first wave automatically
+	_start_next_wave()
+
+func _build_wave_definition(wave_index: int) -> Dictionary:
+	var wave_name: String = "Wave %d" % wave_index
+
+	var target_concurrent: int = clamp(
+		base_target_concurrent + wave_index,
+		base_target_concurrent,
+		max_target_concurrent
+	)
+
+	var total_basic: int = clamp(
+		base_total_basic + (wave_index - 1) * total_basic_per_wave,
+		base_total_basic,
+		max_total_basic
+	)
+
+	var spawn_interval: float = max(
+		base_spawn_interval - (wave_index - 1) * spawn_interval_decay_per_wave,
+		min_spawn_interval
+	)
+
+	var enemy_defs: Array = [
+		{
+			"scene": ENEMY_BASIC_SCENE,
+			"total_count": total_basic,
+			"spawn_group": "default",
+			"early_ratio": 0.6,
+			"mid_ratio": 0.25,
+			"late_ratio": 0.15,
+		}
+	]
+
+	return {
+		"name": wave_name,
+		"target_concurrent": target_concurrent,
+		"spawn_interval": spawn_interval,
+		"break_duration": base_break_duration,
+		"enemies": enemy_defs,
+	}
+
+func _generate_spawn_queue(wave_def: Dictionary) -> Array:
+	var early: Array = []
+	var mid: Array = []
+	var late: Array = []
+
+	var enemies_variant = wave_def.get("enemies", [])
+	var enemies: Array = enemies_variant if enemies_variant is Array else []
+
+	for e_variant in enemies:
+		if typeof(e_variant) != TYPE_DICTIONARY:
+			continue
+		var e: Dictionary = e_variant
+
+		var scene: PackedScene = e.get("scene", null)
+		if scene == null:
+			continue
+
+		var total_count: int = int(e.get("total_count", 0))
+		if total_count <= 0:
+			continue
+
+		var group_name: String = str(e.get("spawn_group", "default"))
+
+		var early_ratio: float = float(e.get("early_ratio", 0.6))
+		var mid_ratio: float = float(e.get("mid_ratio", 0.25))
+
+		var early_count: int = int(round(total_count * early_ratio))
+		var mid_count: int = int(round(total_count * mid_ratio))
+		var used: int = early_count + mid_count
+		var late_count: int = max(total_count - used, 0)
+
+		for i in range(early_count):
+			early.append({ "scene": scene, "spawn_group": group_name })
+		for i in range(mid_count):
+			mid.append({ "scene": scene, "spawn_group": group_name })
+		for i in range(late_count):
+			late.append({ "scene": scene, "spawn_group": group_name })
+
+	early.shuffle()
+	mid.shuffle()
+	late.shuffle()
+
+	var result: Array = []
+	result.append_array(early)
+	result.append_array(mid)
+	result.append_array(late)
+	return result
+
+func _start_next_wave() -> void:
+	current_wave_index += 1
+
+	_current_wave_def = _build_wave_definition(current_wave_index)
+	_spawn_queue = _generate_spawn_queue(_current_wave_def)
+	_spawn_index = 0
+	_active_enemies = 0
+
+	var interval: float = float(_current_wave_def.get("spawn_interval", 0.5))
+	_spawn_timer.wait_time = max(interval, 0.01)
+	_spawn_timer.start()
+
+	emit_signal("wave_started", current_wave_index)
+
+func _is_offscreen(global_pos: Vector2) -> bool:
+	var viewport := get_viewport()
+	var camera := viewport.get_camera_2d()
+	if camera == null:
+		# No camera, assume off-screen (safer for spawning)
+		return true
+	
+	# Get the camera's visible area in world space
+	var viewport_size := viewport.get_visible_rect().size
+	var world_size := viewport_size / camera.zoom
+	var camera_center := camera.global_position
+	var world_rect := Rect2(
+		camera_center - world_size / 2.0,
+		world_size
+	)
+	
+	# Add a margin to ensure enemies spawn well off-screen
+	var margin := 100.0
+	var expanded_rect := Rect2(
+		world_rect.position - Vector2(margin, margin),
+		world_rect.size + Vector2(margin * 2, margin * 2)
+	)
+	
+	return not expanded_rect.has_point(global_pos)
+
+func _try_spawn_entry(entry: Dictionary) -> bool:
+	var scene: PackedScene = entry.get("scene")
+	if scene == null:
+		return false
+
+	var group_name: String = str(entry.get("spawn_group", "default"))
+	var points: Array = _spawn_points_by_group.get(group_name, [])
+	if points.is_empty():
+		return false
+
+	var shuffled_points := points.duplicate()
+	shuffled_points.shuffle()
+
+	for p in shuffled_points:
+		if not (p is Node2D):
+			continue
+		var pos: Vector2 = (p as Node2D).global_position
+		if _is_offscreen(pos):
+			var enemy = scene.instantiate()
+
+			# Spawn slightly above the spawn point, with small horizontal jitter
+			var jitter_x: float = randf_range(-8.0, 8.0)
+			var vertical_offset: float = -16.0  # 16 pixels above the spawn point (upwards in Godot's Y)
+			enemy.global_position = pos + Vector2(jitter_x, vertical_offset)
+
+			# Assign player reference if possible
+			if _player != null and enemy.has_method("set_player"):
+				enemy.set_player(_player)
+
+			# Add to current scene
+			get_tree().current_scene.add_child(enemy)
+
+			# Connect died signal if present
+			if enemy.has_signal("died"):
+				if not enemy.died.is_connected(_on_enemy_died):
+					enemy.died.connect(_on_enemy_died)
+
+			_active_enemies += 1
+			return true
+
+	# Could not find valid off-screen point
+	return false
+
+func _on_spawn_timer_timeout() -> void:
+	# Already no queue and no enemies? Wave is done.
+	if _spawn_index >= _spawn_queue.size() and _active_enemies <= 0:
+		_on_wave_cleared()
+		return
+
+	var target_concurrent: int = int(_current_wave_def.get("target_concurrent", 5))
+
+	if _active_enemies >= target_concurrent:
+		return
+
+	if _spawn_index >= _spawn_queue.size():
+		# No more units to schedule, just wait for kills
+		return
+
+	var entry: Dictionary = _spawn_queue[_spawn_index]
+	var spawned: bool = _try_spawn_entry(entry)
+	if spawned:
+		_spawn_index += 1
+
+func _on_enemy_died() -> void:
+	_active_enemies = max(_active_enemies - 1, 0)
+	_total_kills += 1
+
+func _on_wave_cleared() -> void:
+	_spawn_timer.stop()
+	emit_signal("wave_cleared", current_wave_index)
+
+	var break_duration: float = float(_current_wave_def.get("break_duration", base_break_duration))
+	_break_timer.wait_time = max(break_duration, 0.0)
+	_break_timer.start()
+
+func _on_break_timer_timeout() -> void:
+	_start_next_wave()
+
+func get_total_kills() -> int:
+	return _total_kills
+
+func get_monsters_remaining() -> int:
+	# Remaining = not yet spawned from the queue + currently alive
+	var total: int = _spawn_queue.size()
+	if total <= 0:
+		return _active_enemies
+
+	var spawned_so_far: int = min(_spawn_index, total)
+	var pending: int = max(total - spawned_so_far, 0)
+
+	return pending + _active_enemies
+```
+
+### `wave_spawn_point.gd`
+**Location:** `game/Scripts/wave_spawn_point.gd`  
+**Extends:** `Node2D`  
+**Function:** Simple spawn point marker script for wave system.
+
+```gdscript
+extends Node2D
+
+@export var spawn_group: String = "default"
 ```
 
 ---
@@ -2606,10 +3015,11 @@ func _on_area_body_exited(body: Node) -> void:
 This document contains all scripts in the Shoot To Kill project, organized by category:
 
 - **Core System Scripts**: GameManager autoload for currency, XP, progression, purchases, scene management, and debug input blocking
-- **Player Scripts**: Player controller with movement, health, shooting, weapon switching (primary/secondary), animation, aiming, gold currency, debug input blocking, and UI mouse mode
-- **Enemy Scripts**: Enemy AI with state machine, health, contact damage, flash effects, health bars, loot drops, and XP rewards
-- **Weapon Scripts**: Base weapon class (with fire rate, full-auto, spread, hand offsets), pistol implementation (semi-auto), assault rifle implementation (full-auto capable), and bullet physics
-- **UI Scripts**: HUD manager (health, currency, XP), shop UI, debug console, and crosshair system with outer pulse effect
+- **Player Scripts**: Player controller with movement, health, shooting, weapon switching (primary/secondary), animation, aiming, two-handed weapon support, gold currency, debug input blocking, and UI mouse mode
+- **Enemy Scripts**: Enemy AI with state machine, health, contact damage, flash effects, health bars, loot drops, XP rewards, died signal, and set_player method
+- **Weapon Scripts**: Base weapon class (with fire rate, full-auto, spread, hand offsets, two-handed support), pistol implementation (semi-auto), assault rifle implementation (full-auto capable), and bullet physics
+- **Wave System Scripts**: WaveManager for endless waves with difficulty scaling, and WaveSpawnPoint for spawn point markers
+- **UI Scripts**: HUD manager (health, currency, XP, wave display, kill/remaining stats), shop UI, debug console, and crosshair system with outer pulse effect
 - **Progression System Scripts**: ItemDatabase for item metadata, ShopUI for purchasing items
 - **Tavern Scripts**: Bartender interaction (opens shop) and RunDoor interaction (starts new run)
 - **Effect Scripts**: Damage numbers, hit impacts, blood effects, and coin pickups

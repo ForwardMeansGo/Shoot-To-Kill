@@ -6,12 +6,15 @@
 Core gameplay pillars:
 - Clean & responsive movement
 - Modular weapon system with weapon switching (primary/secondary)
+- Two-handed weapon support with separate back arm sprite and *_noarms animations
 - Per-weapon fire rate and full-auto support
 - Per-weapon bullet spread (accuracy) system
 - Reliable bullets with continuous collision detection
 - Damage ranges + crit system
 - Floating damage numbers with smooth arcing motion and color-coded hit types
 - Enemies with full health logic and damage feedback
+- Endless wave system with difficulty scaling and off-screen spawning
+- Wave-based enemy spawning with kill/remaining tracking
 - Camera shake + gun audio
 - Weighted aim dot system with per-weapon smoothing
 - Arm and gun aiming system with per-weapon hand offsets
@@ -50,6 +53,11 @@ Current dev focus: **Combat polish + enemy interactions**
 - "fall" animation plays while descending.
 - "land" animation plays once when hitting the floor.
 - "run_backwards" animation plays when moving opposite to facing direction.
+- **Two-handed weapon animations**: When using two-handed weapons, uses `*_noarms` variants:
+  - `idle_noarms` - Idle animation without back arm (back arm drawn separately)
+  - `run_noarms` - Forward run without back arm
+  - `run_backwards_noarms` - Backwards run without back arm
+- Animation selection checks if `*_noarms` variant exists before using it.
 
 ### Weapon Bob & Kickback
 - **Weapon Bob**: Per-frame vertical offsets synced with player animations (idle, run, run_backwards, jump/fall).
@@ -67,6 +75,11 @@ Current dev focus: **Combat polish + enemy interactions**
 - Arm sprite rotates toward aim point.
 - Gun positioned relative to arm using hand offset.
 - **Per-weapon hand offsets**: Each weapon defines its own `hand_offset_right` and `hand_offset_left` (configurable in Inspector).
+- **Two-handed weapon support**: 
+  - Two-handed weapons use separate `BackArmSprite` under `WeaponBobOffset`.
+  - Back arm positioned relative to gun using `support_hand_offset_right` and `support_hand_offset_left`.
+  - Back arm rotates with gun and follows gun position.
+  - Only visible when current weapon has `is_two_handed = true`.
 - Per-facing offsets for weapon holder position.
 - Weapon flips vertically using `set_facing_left()`.
 - Player sprite flips horizontally using sprite scale.
@@ -133,6 +146,8 @@ Current dev focus: **Combat polish + enemy interactions**
   - `is_full_auto` - If true, weapon can fire continuously while trigger held (default false)
   - `spread_degrees` - Maximum bullet spread angle in degrees (range 0.0-45.0, default 0.0)
   - `hand_offset_right` / `hand_offset_left` - Per-weapon hand position offsets (default Vector2(8, -2) / Vector2(8, 2))
+  - `is_two_handed` - If true, weapon uses two-handed pose with BackArmSprite (default false)
+  - `support_hand_offset_right` / `support_hand_offset_left` - Back arm position offsets for two-handed weapons (default Vector2.ZERO)
   - `bullet_scene` - Bullet scene to spawn
 - **Fire Rate System**
   - Internal cooldown timer (`_time_until_next_shot`) managed automatically.
@@ -202,6 +217,7 @@ Current dev focus: **Combat polish + enemy interactions**
 
 ### Movement
 - Moves toward exported `player` reference in `CHASE` state.
+- Player reference can be assigned via `set_player(p: Node2D)` method (used by WaveManager).
 - Stops horizontal movement in `ATTACK` state.
 - Applies gravity (except when `DEAD`).
 - Sprite flips depending on direction.
@@ -277,7 +293,10 @@ Current dev focus: **Combat polish + enemy interactions**
   - Sets state to `DEAD`.
   - Calls `_drop_loot()` to spawn coins.
   - Awards XP via `GameManager.add_xp(xp_reward)` if `xp_reward > 0`.
+  - Emits `died` signal before freeing (allows WaveManager to track kills).
   - Immediately calls `queue_free()`.
+- **Signals**:
+  - `died` - emitted when enemy dies (before queue_free).
 - **XP Reward**:
   - `xp_reward` exported (default 10): XP granted when enemy dies.
   - XP is added directly to GameManager, triggering level-ups automatically.
@@ -298,6 +317,63 @@ Current dev focus: **Combat polish + enemy interactions**
 
 ### Group
 - Enemy registers in `"enemy"` group.
+
+---
+
+## Wave System (`wave_manager.gd`)
+
+### Architecture
+- **WaveManager Node**: Added to level scene (typically under root of `level_01.tscn`).
+- Manages endless waves with automatic progression and difficulty scaling.
+- Spawns enemies from off-screen spawn points.
+- Tracks active enemies and total kills.
+
+### Wave Progression
+- Waves start automatically on scene load.
+- Each wave has configurable difficulty parameters that scale with wave index.
+- Wave clears when all enemies are spawned and killed.
+- Break timer between waves (configurable duration).
+- Automatic progression to next wave after break.
+
+### Wave Definition
+- **Target Concurrent**: Maximum enemies alive at once (scales with wave).
+- **Total Enemies**: Total enemies per wave (scales with wave).
+- **Spawn Interval**: Time between spawns (decreases with wave for faster spawning).
+- **Break Duration**: Time between waves (configurable).
+
+### Spawn System
+- **Spawn Points**: Marked with `wave_spawn_point.gd` script under `WaveSpawnPoints` node.
+- **Spawn Groups**: Spawn points can be grouped (default: "default").
+- **Off-Screen Detection**: Only spawns from points outside camera view (with margin).
+- **Spawn Positioning**:
+  - Enemies spawn 16 pixels above spawn point (vertical offset).
+  - Small horizontal jitter (-8 to +8 pixels) to prevent perfect stacking.
+  - Player reference automatically assigned to spawned enemies.
+
+### Enemy Tracking
+- Tracks `_active_enemies` count via `died` signal connections.
+- Increments `_total_kills` when enemies die.
+- Provides `get_total_kills()` and `get_monsters_remaining()` methods for HUD.
+
+### Signals
+- `wave_started(wave_index: int)` - emitted when a new wave begins.
+- `wave_cleared(wave_index: int)` - emitted when a wave is completed.
+
+### Exports
+- `base_break_duration` - Break time between waves (default 15.0s).
+- `base_target_concurrent` - Starting max concurrent enemies (default 4).
+- `max_target_concurrent` - Maximum concurrent enemies cap (default 25).
+- `base_total_basic` - Starting enemy count per wave (default 6).
+- `total_basic_per_wave` - Additional enemies per wave (default 3).
+- `max_total_basic` - Maximum enemies per wave cap (default 80).
+- `base_spawn_interval` - Starting spawn interval (default 0.8s).
+- `min_spawn_interval` - Minimum spawn interval (default 0.25s).
+- `spawn_interval_decay_per_wave` - Spawn interval reduction per wave (default 0.03s).
+
+### WaveSpawnPoint (`wave_spawn_point.gd`)
+- Simple Node2D script with `spawn_group` export.
+- Used by WaveManager to locate spawn positions.
+- Place multiple spawn points under `WaveSpawnPoints` node, positioned off-screen.
 
 ---
 
@@ -390,8 +466,11 @@ Current dev focus: **Combat polish + enemy interactions**
     - Uses `hp_tween` to animate value changes.
     - 0.15s duration with `TRANS_SINE` and `EASE_OUT`.
     - Kills existing tween before creating new one.
-- **Currency Panel**
-  - `CurrencyPanel` (HBoxContainer) with three boxes:
+- **Info Panel**
+  - `InfoPanel` (container) with multiple display boxes:
+    - `WaveBox/WaveLabel`: Displays current wave number ("WAVE: X").
+    - `StatsBox/MonstersKilledLabel`: Displays total kills ("KILLS: X").
+    - `StatsBox/MonstersRemainingLabel`: Displays remaining enemies in current wave ("REMAINING: X").
     - `GoldBox/GoldLabel`: Displays run gold from GameManager (1 decimal place).
     - `EssenceBox/EssenceLabel`: Displays permanent essence from GameManager.
     - `XPBox/XPLabel`: Displays level and XP in format "Lv X  XP Y".
@@ -399,6 +478,9 @@ Current dev focus: **Combat polish + enemy interactions**
     - `gold_run_changed` → `_on_gold_run_changed()`
     - `essence_changed` → `_on_essence_changed()`
     - `xp_changed` → `_on_xp_changed()`
+  - Connects to WaveManager in `_ready()`:
+    - `wave_started` → `_on_wave_started()`
+  - Updates kill/remaining stats every frame in `_process()`.
   - Initializes labels from current GameManager state.
 - **Texture Requirements (Player Health Bar):**
   - Background texture contains the heart, frame, and bar track.
@@ -412,6 +494,8 @@ Current dev focus: **Combat polish + enemy interactions**
 ### Level_01.tscn
 - World layout + enemies + player.
 - Main run scene loaded when starting a new run.
+- **WaveManager** node (script: `wave_manager.gd`) manages endless waves.
+- **WaveSpawnPoints** node contains multiple spawn point markers (script: `wave_spawn_point.gd`).
 
 ### Tavern.tscn
 - Hub scene where player returns after death.
@@ -430,12 +514,15 @@ Current dev focus: **Combat polish + enemy interactions**
 ### HUD.tscn
 - HUD root (CanvasLayer, script: `hud.gd`)
 - PlayerHealthBar (TextureProgressBar)
-- CurrencyPanel (HBoxContainer):
+- InfoPanel (container):
+  - WaveBox/WaveLabel: Displays current wave
+  - StatsBox/MonstersKilledLabel: Displays total kills
+  - StatsBox/MonstersRemainingLabel: Displays remaining enemies
   - GoldBox/GoldLabel: Displays run gold
   - EssenceBox/EssenceLabel: Displays permanent essence
   - XPBox/XPLabel: Displays level and XP
-- Listens to Player's `health_changed` signal and GameManager currency/XP signals
-- Updates all displays with smooth tweening (health) or instant updates (currency/XP)
+- Listens to Player's `health_changed` signal, GameManager currency/XP signals, and WaveManager wave signals
+- Updates all displays with smooth tweening (health) or instant updates (currency/XP/wave/stats)
 
 ### Gun.tscn
 - Weapon scene with muzzle + audio.
@@ -499,13 +586,15 @@ Current dev focus: **Combat polish + enemy interactions**
 - `game/Scripts/item_database.gd` - Item metadata autoload (weapons, throwables, gear definitions)
 - `game/Scripts/shop_ui.gd` - Shop UI for purchasing items with Essence and level gating
 - `game/Scripts/debug_console.gd` - Debug console with commands (debug builds only)
-- `game/Scripts/player.gd` - Player movement, health, shooting, weapon switching, animation, aiming, gold forwarding, debug input blocking, UI mouse mode
-- `game/Scripts/hud.gd` - HUD health bar and currency/XP display management
+- `game/Scripts/player.gd` - Player movement, health, shooting, weapon switching, animation, aiming, two-handed weapon support, gold forwarding, debug input blocking, UI mouse mode
+- `game/Scripts/hud.gd` - HUD health bar, currency/XP display, wave display, and kill/remaining stats management
+- `game/Scripts/wave_manager.gd` - Endless wave system with difficulty scaling, off-screen spawning, kill tracking
+- `game/Scripts/wave_spawn_point.gd` - Spawn point marker script for wave system
 - `game/Scripts/camera_2d.gd` - Camera shake system
 - `game/Scripts/crosshair.gd` - Crosshair and weighted aim dot system with outer pulse effect
 - `game/Scripts/damage_number.gd` - Floating damage number animation
-- `game/Scripts/enemies/enemy.gd` - Enemy AI, health, contact damage, flash, health bars, loot drops, XP rewards
-- `game/Scripts/weapons/weapon_base.gd` - Base weapon class with damage/crit system, fire rate, full-auto, spread, aim dot smoothing, hand offsets
+- `game/Scripts/enemies/enemy.gd` - Enemy AI, health, contact damage, flash, health bars, loot drops, XP rewards, died signal
+- `game/Scripts/weapons/weapon_base.gd` - Base weapon class with damage/crit system, fire rate, full-auto, spread, aim dot smoothing, hand offsets, two-handed weapon support
 - `game/Scripts/weapons/weapon_pistol.gd` - Pistol weapon implementation (semi-auto)
 - `game/Scripts/weapons/weapon_assault_rifle.gd` - Assault Rifle weapon implementation (full-auto capable)
 - `game/Scripts/weapons/bullet.gd` - Bullet movement and collision

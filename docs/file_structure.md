@@ -97,6 +97,8 @@ Shoot-To-Kill
         │   shop_ui.gd
         │   tavern_bartender.gd
         │   tavern_run_door.gd
+        │   wave_manager.gd
+        │   wave_spawn_point.gd
         │
         ├── enemies
         │       enemy.gd

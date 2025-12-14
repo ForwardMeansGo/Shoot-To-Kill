@@ -65,6 +65,24 @@ Weapons live under `scripts/weapons/`.
   - Player checks if `gun is WeaponBase`, then uses weapon's offsets.
   - Falls back to default constants for non-WeaponBase weapons.
 
+### Two-Handed Weapon Support
+- **Two-Handed Exports**:
+  - `is_two_handed: bool` (default false) - Marks weapon as two-handed.
+  - `support_hand_offset_right: Vector2` (default Vector2.ZERO) - Back arm position when facing right.
+  - `support_hand_offset_left: Vector2` (default Vector2.ZERO) - Back arm position when facing left.
+- **Back Arm Sprite**:
+  - Two-handed weapons use separate `BackArmSprite` under `WeaponBobOffset`.
+  - Back arm positioned relative to gun using support hand offsets.
+  - Back arm rotates with gun and follows gun position.
+  - Only visible when weapon has `is_two_handed = true`.
+- **Animation Variants**:
+  - Two-handed weapons use `*_noarms` animation variants:
+    - `idle_noarms` - Idle without back arm (back arm drawn separately).
+    - `run_noarms` - Forward run without back arm.
+    - `run_backwards_noarms` - Backwards run without back arm.
+  - Animation selection checks if variant exists before using it.
+  - Weapon bob system matches `*_noarms` animations to same bob curves as regular animations.
+
 ### Bullet Spawning
 - `spawn_bullet(target_global_pos)`:
   - Gets `dmg_info` from `_roll_damage()`.
@@ -128,6 +146,13 @@ Bullets use raycasting each frame to avoid tunneling.
   - "run" animation plays when `abs(velocity.x) > 1.0` AND `is_on_floor()`.
   - "run_backwards" animation plays when moving opposite to facing direction.
   - "idle" animation plays when not moving on ground.
+- **Two-Handed Weapon Animations**:
+  - When using two-handed weapons (`is_two_handed = true`), uses `*_noarms` variants:
+    - `idle_noarms` - Idle without back arm (back arm drawn separately via BackArmSprite).
+    - `run_noarms` - Forward run without back arm.
+    - `run_backwards_noarms` - Backwards run without back arm.
+  - Animation selection checks `sprite_frames.has_animation()` before using `*_noarms` variant.
+  - Weapon bob system matches `*_noarms` animations to same bob curves as regular animations.
 - **Air Movement**:
   - "jump" animation plays while ascending (`velocity.y < 0.0`).
   - "fall" animation plays while descending (`velocity.y >= 0.0`).
@@ -145,6 +170,12 @@ Bullets use raycasting each frame to avoid tunneling.
   - **Per-weapon hand offsets**: Each weapon defines its own `hand_offset_right` and `hand_offset_left` (configurable in Inspector).
   - Per-facing offsets for weapon holder position.
   - Arm visual flip helper prevents upside-down appearance when aiming across top.
+- **Two-Handed Weapon Support**:
+  - Back arm sprite (`$WeaponHolder/WeaponBobOffset/BackArmSprite`) used for two-handed weapons.
+  - Back arm positioned relative to gun using `support_hand_offset_right` / `support_hand_offset_left`.
+  - Back arm rotates with gun and follows gun position.
+  - Only visible when current weapon has `is_two_handed = true`.
+  - Helper function `_is_current_weapon_two_handed()` checks if current weapon is two-handed.
 - **Per-Facing Offsets**:
   - Weapon holder: `weapon_base_offset + Vector2(8, 0)` when facing left, `weapon_base_offset` when facing right.
   - Gun hand offset: Queried from weapon's `hand_offset_left` / `hand_offset_right` when weapon is WeaponBase, falls back to defaults (`Vector2(8, 2)` / `Vector2(8, -2)`) otherwise.
@@ -387,8 +418,17 @@ Bullets use raycasting each frame to avoid tunneling.
 - **Texture Requirements:**
   - Progress texture must only contain the fill bar, with no heart or frame. Background holds all decorative art. Use Progress Offset to align the fill.
 
-### Currency Panel
-- `CurrencyPanel` (HBoxContainer) with three display boxes:
+### Info Panel
+- `InfoPanel` (container) with multiple display boxes:
+  - **WaveBox/WaveLabel**: Displays current wave number.
+    - Format: `"WAVE: %d" % wave_index`
+    - Updates via `_on_wave_started(wave_index)` handler (connected to WaveManager).
+  - **StatsBox/MonstersKilledLabel**: Displays total kills.
+    - Format: `"KILLS: %d" % total_kills`
+    - Updates every frame in `_process()` via `WaveManager.get_total_kills()`.
+  - **StatsBox/MonstersRemainingLabel**: Displays remaining enemies in current wave.
+    - Format: `"REMAINING: %d" % remaining`
+    - Updates every frame in `_process()` via `WaveManager.get_monsters_remaining()`.
   - **GoldBox/GoldLabel**: Displays run gold from GameManager.
     - Shows value with 1 decimal place precision (using `snapped()`).
     - Updates via `_on_gold_run_changed(current_gold)` handler.
@@ -403,6 +443,8 @@ Bullets use raycasting each frame to avoid tunneling.
     - `GameManager.gold_run_changed` → `_on_gold_run_changed()`
     - `GameManager.essence_changed` → `_on_essence_changed()`
     - `GameManager.xp_changed` → `_on_xp_changed()`
+  - Connects to WaveManager in `_ready()`:
+    - `WaveManager.wave_started` → `_on_wave_started()`
   - Initializes all labels from current GameManager state after connecting signals.
 
 ---
@@ -417,6 +459,7 @@ Enemies use a state-based system with three states:
 
 ### Movement
 - Horizontal chasing toward Player in `CHASE` state.
+- Player reference can be assigned via `set_player(p: Node2D)` method (used by WaveManager).
 - Stops horizontal movement in `ATTACK` state (prevents pushing through player).
 - Uses gravity (except when `DEAD`).
 - Sprite flipping based on direction.
@@ -507,7 +550,10 @@ Enemies use a state-based system with three states:
   - Sets state to `DEAD`.
   - Calls `_drop_loot()` to spawn coins.
   - Awards XP via `GameManager.add_xp(xp_reward)` if `xp_reward > 0`.
+  - Emits `died` signal before freeing (allows WaveManager to track kills).
   - Immediately calls `queue_free()`.
+- **Signals**:
+  - `died` - emitted when enemy dies (before queue_free).
 - **XP Reward**:
   - `xp_reward` exported (default 10): XP granted when enemy dies.
   - XP is added directly to GameManager, triggering level-ups automatically.
@@ -526,6 +572,79 @@ Enemies use a state-based system with three states:
   - Exported `silver_drop_chance` (default 0.5) and `gold_drop_chance` (default 0.25).
   - Each coin type has independent drop chance (can drop both, one, or neither).
   - Coins spawn at enemy's `global_position` when dropped.
+
+---
+
+## Wave System
+
+### Architecture
+- **WaveManager** (`wave_manager.gd`): Node added to level scene (typically under root of `level_01.tscn`).
+- Manages endless waves with automatic progression and difficulty scaling.
+- Spawns enemies from off-screen spawn points.
+- Tracks active enemies and total kills.
+
+### Wave Progression
+- Waves start automatically on scene load.
+- Each wave has configurable difficulty parameters that scale with wave index.
+- Wave clears when all enemies are spawned and killed.
+- Break timer between waves (configurable duration).
+- Automatic progression to next wave after break.
+
+### Wave Definition
+- **Target Concurrent**: Maximum enemies alive at once (scales with wave).
+  - Formula: `clamp(base_target_concurrent + wave_index, base_target_concurrent, max_target_concurrent)`
+- **Total Enemies**: Total enemies per wave (scales with wave).
+  - Formula: `clamp(base_total_basic + (wave_index - 1) * total_basic_per_wave, base_total_basic, max_total_basic)`
+- **Spawn Interval**: Time between spawns (decreases with wave for faster spawning).
+  - Formula: `max(base_spawn_interval - (wave_index - 1) * spawn_interval_decay_per_wave, min_spawn_interval)`
+- **Break Duration**: Time between waves (configurable, default 15.0s).
+
+### Spawn System
+- **Spawn Points**: Marked with `wave_spawn_point.gd` script under `WaveSpawnPoints` node.
+- **Spawn Groups**: Spawn points can be grouped via `spawn_group` export (default: "default").
+- **Off-Screen Detection**: Only spawns from points outside camera view (with 100px margin).
+  - Uses camera's visible area in world space to determine off-screen status.
+- **Spawn Positioning**:
+  - Enemies spawn 16 pixels above spawn point (vertical offset: -16.0).
+  - Small horizontal jitter (-8 to +8 pixels) to prevent perfect stacking.
+  - Player reference automatically assigned to spawned enemies via `set_player()`.
+- **Spawn Queue**:
+  - Wave definition generates spawn queue with early/mid/late phases.
+  - Each phase has different ratios (default: 60% early, 25% mid, 15% late).
+  - Queue is shuffled within each phase for variety.
+
+### Enemy Tracking
+- Tracks `_active_enemies` count via `died` signal connections.
+- Increments `_total_kills` when enemies die.
+- Provides `get_total_kills()` and `get_monsters_remaining()` methods for HUD.
+- `get_monsters_remaining()` calculates: pending spawns + currently alive enemies.
+
+### Wave State Management
+- **Current Wave**: `current_wave_index` tracks current wave number (starts at 1).
+- **Spawn Timer**: Controls spawn interval, stops when wave clears.
+- **Break Timer**: Controls time between waves, automatically starts next wave when complete.
+- **Active Enemies**: Tracks count of currently alive enemies.
+
+### Signals
+- `wave_started(wave_index: int)` - emitted when a new wave begins.
+- `wave_cleared(wave_index: int)` - emitted when a wave is completed (all enemies spawned and killed).
+
+### Exports
+- `base_break_duration: float` - Break time between waves (default 15.0s).
+- `base_target_concurrent: int` - Starting max concurrent enemies (default 4).
+- `max_target_concurrent: int` - Maximum concurrent enemies cap (default 25).
+- `base_total_basic: int` - Starting enemy count per wave (default 6).
+- `total_basic_per_wave: int` - Additional enemies per wave (default 3).
+- `max_total_basic: int` - Maximum enemies per wave cap (default 80).
+- `base_spawn_interval: float` - Starting spawn interval (default 0.8s).
+- `min_spawn_interval: float` - Minimum spawn interval (default 0.25s).
+- `spawn_interval_decay_per_wave: float` - Spawn interval reduction per wave (default 0.03s).
+
+### WaveSpawnPoint (`wave_spawn_point.gd`)
+- Simple Node2D script with `spawn_group: String` export (default: "default").
+- Used by WaveManager to locate spawn positions.
+- Place multiple spawn points under `WaveSpawnPoints` node, positioned off-screen.
+- WaveManager scans for nodes with `spawn_group` property to identify spawn points.
 
 ---
 
