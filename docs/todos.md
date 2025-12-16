@@ -15,6 +15,7 @@
 - [ ] Bullet impact particles (enemy/world)
 - [ ] Enemy hit particles / blood FX
 - [ ] Crit spark FX
+- [ ] Shield to block projectiles (RMB Click)
 
 ## Weapons
 - [ ] Add new weapons (shotgun, SMG, rifle, magic staff)

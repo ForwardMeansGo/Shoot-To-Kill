@@ -87,11 +87,11 @@ func _ready() -> void:
 	else:
 		_wave_manager = null
 
-func _on_player_health_changed(current: int, max: int) -> void:
+func _on_player_health_changed(current: int, max_health: int) -> void:
 	if health_bar == null:
 		return
 
-	health_bar.max_value = max
+	health_bar.max_value = max_health
 
 	# Kill any existing tween so they don't fight
 	if hp_tween and hp_tween.is_valid():
@@ -128,7 +128,7 @@ func _on_wave_started(wave_index: int) -> void:
 		return
 	wave_label.text = "WAVE: %d" % wave_index
 
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	if _wave_manager == null:
 		return
 

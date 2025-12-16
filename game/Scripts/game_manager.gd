@@ -167,14 +167,14 @@ func add_xp(amount: int) -> void:
 func go_to_tavern() -> void:
 	var scene := load(TAVERN_SCENE_PATH) as PackedScene
 	if scene:
-		get_tree().change_scene_to_packed(scene)
+		get_tree().call_deferred("change_scene_to_packed", scene)
 	else:
 		push_warning("GameManager: TAVERN_SCENE_PATH is invalid: %s" % TAVERN_SCENE_PATH)
 
 func start_new_run() -> void:
 	var scene := load(RUN_SCENE_PATH) as PackedScene
 	if scene:
-		get_tree().change_scene_to_packed(scene)
+		get_tree().call_deferred("change_scene_to_packed", scene)
 	else:
 		push_warning("GameManager: RUN_SCENE_PATH is invalid: %s" % RUN_SCENE_PATH)
 

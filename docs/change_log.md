@@ -4,6 +4,120 @@ This file tracks significant documentation updates and corrections.
 
 ---
 
+## 2025-12-16 — Docs Resync: Approved Facts Only
+
+### Summary
+Docs resync: coin arc-to-ground+hover confirmed; kill_color corrected; debug console help lists spawn/godmode; enemy ATTACK wording corrected; removed outdated coin-system references.
+
+### Updates Made
+- **Coin System**: Updated to explicitly document motion simulation, TRAVEL_TIME 0.6, ground mask bit 0, and arc-to-ground + hover system
+- **Damage Numbers**: Verified kill_color is `Color(1.0, 0.201, 0.059, 1.0)` in scripts_copy.md
+- **Debug Console**: Verified help output includes spawn and godmode commands
+- **Enemy ATTACK**: Verified wording states "continues pressing toward player at reduced speed" (not "stops moving")
+
+### Files Updated
+- `project_index.md`: Coin System section updated to match approved skeleton
+- `gameplay_systems.md`: Coin System section updated to match approved skeleton
+- **Damage numbers**: Clarified spawn offset to `Vector2(2, -19)` after sprite centering (no logic change).
+
+---
+
+## 2025-12-16 — Documentation Resync After Recovery
+
+### Summary
+Documentation resync after recovery; removed outdated coin-system description; ensured debug console help lists spawn/godmode; corrected damage number killing blow color in docs.
+
+### Updates Made
+- **Coin System**: Removed outdated "exported arc motion settings" descriptions; updated to arc-to-ground + hover system with single raycast ground detection
+- **Damage Numbers**: Corrected killing blow color documentation to `Color(1.0, 0.201, 0.059, 1.0)` (was incorrectly documented as different values)
+- **Debug Console**: Verified spawn and godmode commands are documented in help text
+- **Scripts Copy**: Updated `damage_number.gd` kill_color constant to match actual code
+
+### Files Updated
+- `project_index.md`: Coin System section rewritten, Damage Numbers color corrected
+- `gameplay_systems.md`: Coin System section updated, Damage Numbers color corrected
+- `scripts_copy.md`: `damage_number.gd` kill_color constant corrected
+
+---
+
+## 2025-12-16 — Code & Documentation Restoration
+
+### Summary
+Complete restoration of all code and documentation changes that were accidentally reverted. All systems, features, and documentation from the previous synchronization session have been fully restored.
+
+### Restored Code Systems
+
+#### Enemy System (`enemy.gd`)
+- **Separation Force**: Horizontal repulsion in CHASE state using SeparationArea, inverse distance weighting, neighbor limiting
+- **Facing Stability**: Deadzone-based facing prevents flip jitter (`face_deadzone_px`, `facing_left` boolean)
+- **ATTACK Movement**: Reduced-speed movement toward player via `attack_move_multiplier` (default 0.35)
+- **Node Caching**: `@onready` caching for `damage_area` and `separation_area`
+- **Early Return Safety**: Prevents physics errors when player dies from contact damage
+- **Robust Body Exited Logic**: Overlap checking before switching to CHASE state
+- **Damage Number Spawn**: Fixed position `Vector2(0, -19)` (was `Vector2(15, -10)`)
+- **Coin Spawn**: Uses `COIN_SPAWN_OFFSET + jitter` to prevent stacking
+- **Debug Print Wrapping**: All debug prints wrapped in `OS.is_debug_build()`
+
+#### Coin System (`coin.gd`)
+- **Arc-to-Ground + Hover**: Complete rewrite from old arc motion system
+- **Ground Raycast Detection**: `_find_ground_y()` finds landing position
+- **Constants**: `TRAVEL_TIME = 0.6`, `GROUND_CLEARANCE = 8.0`, `HOVER_HEIGHT = 2.0`, `HOVER_SPEED = 4.0`
+- **Motion Simulation**: Intentional simulation (no physics bodies) for performance and determinism
+
+#### Player System (`player.gd`)
+- **Godmode**: `godmode_enabled` boolean checked in `take_damage()` before invulnerability
+- **Parameter Fixes**: Unused parameters prefixed with `_` (`_input(_event)`, `_on_weapon_fired(_strength, _duration)`)
+
+#### Debug Console (`debug_console.gd`)
+- **Spawn Command**: `spawn <count> basicenemy [left|right|points]` with helper functions
+- **Godmode Command**: `godmode` toggles player invincibility
+- **Helper Functions**: `_get_player()`, `_get_wave_spawn_points()`, `_spawn_basic_enemy()`
+
+#### GameManager (`game_manager.gd`)
+- **Deferred Scene Transitions**: `go_to_tavern()` and `start_new_run()` use `call_deferred()` to prevent physics errors
+
+#### HUD (`hud.gd`)
+- **Parameter Fixes**: `_process(_delta)`, `_on_player_health_changed(current, max_health)`
+
+#### Crosshair (`crosshair.gd`)
+- **Parameter Fixes**: `on_weapon_fired(_strength, _duration)`
+
+### Restored Documentation
+
+#### project_index.md
+- Updated Enemy System: Added separation force, facing stability, ATTACK movement subsections
+- Updated Coin System: Complete rewrite (arc-to-ground + hover)
+- Updated Damage Numbers: Corrected spawn position
+- Updated Loot Drop System: Added COIN_SPAWN_OFFSET + jitter details
+- Added Debug Console section: spawn and godmode commands
+- Added Player Health godmode subsection
+- Updated GameManager Scene Management: Mentioned deferred calls
+
+#### gameplay_systems.md
+- Updated Enemy System: Added all new subsections (separation, facing, attack movement, robust exit logic, early return safety)
+- Updated Coin System: Complete rewrite (arc-to-ground + hover architecture)
+- Updated Damage Numbers: Corrected spawn position
+- Updated Loot Drop System: Added offset + jitter
+- Updated Debug Console: Added spawn and godmode commands
+- Added Player Health godmode subsection
+- Updated GameManager Scene Management: Mentioned deferred calls
+
+#### scripts_copy.md
+- Updated `player.gd`: Added godmode_enabled, parameter fixes
+- Updated `enemy.gd`: Added all new exports, constants, functions, and logic
+- Updated `coin.gd`: Complete replacement with arc-to-ground system
+- Updated `debug_console.gd`: Added spawn and godmode commands
+- Updated `game_manager.gd`: Deferred scene transitions
+- Updated `hud.gd`: Parameter name fixes
+- Updated `crosshair.gd`: Parameter name fixes
+
+### Notes
+- All code changes have been fully restored and match the synchronized state
+- Documentation has been updated to reflect all restored systems
+- Scripts_copy.md contains updated script sections (full verbatim copies should be regenerated from actual code files for 100% accuracy)
+
+---
+
 ## 2024-12-28 — Major Documentation Synchronization
 
 ### Summary

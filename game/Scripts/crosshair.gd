@@ -50,7 +50,7 @@ func _process(delta: float) -> void:
 func get_dot_world_position() -> Vector2:
 	return dot_sprite.global_position
 
-func on_weapon_fired(strength: float, duration: float) -> void:
+func on_weapon_fired(_strength: float, _duration: float) -> void:
 	# Pulse the outer crosshair scale when a shot is actually fired
 	if outer_sprite == null:
 		return

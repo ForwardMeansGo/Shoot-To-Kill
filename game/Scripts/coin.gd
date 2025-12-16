@@ -2,50 +2,61 @@ extends Area2D
 
 @export var value: float = 1.0
 
-# Arc motion settings
-@export var travel_time: float = 0.4          # Time for the full arc
-@export var min_horizontal_distance: float = 20.0
-@export var max_horizontal_distance: float = 40.0
-@export var min_vertical_drop: float = 8.0    # How far down from spawn the coin ends
-@export var max_vertical_drop: float = 16.0
-@export var arc_height: float = 25.0          # How high the arc goes at the peak
+# Ground detection / arc-to-ground constants
+const GROUND_MASK := 1 << 0
+const RAY_LENGTH := 2000.0
 
-# Idle bobbing after landing
-@export var bob_height: float = 2.0
-@export var bob_speed: float = 4.0
+const TRAVEL_TIME := 0.6
+const MIN_DX := 14.0
+const MAX_DX := 34.0
+const ARC_HEIGHT := 22.0
+
+const GROUND_CLEARANCE := 8.0  # IMPORTANT: bigger than before to avoid clipping
+const HOVER_HEIGHT := 2.0
+const HOVER_SPEED := 4.0
 
 @onready var sprite: Node2D = $AnimatedSprite2D
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
 @onready var audio_player: AudioStreamPlayer2D = $PickupAudio
 
-var _picked_up: bool = false
-
-var _t: float = 0.0
+var _picked_up := false
+var _t := 0.0
 var _start_pos: Vector2
-var _end_offset: Vector2
 var _landing_pos: Vector2
-var _landed: bool = false
-var _bob_time: float = 0.0
+var _landed := false
+var _bob_time := 0.0
+
+func _find_ground_y(from_pos: Vector2) -> float:
+	var space := get_world_2d().direct_space_state
+	var to_pos := from_pos + Vector2(0, RAY_LENGTH)
+
+	var query := PhysicsRayQueryParameters2D.create(from_pos, to_pos)
+	query.collision_mask = GROUND_MASK
+	query.hit_from_inside = true
+
+	var hit := space.intersect_ray(query)
+	if hit.is_empty():
+		return from_pos.y
+	return float(hit.position.y)
 
 func _ready() -> void:
 	# Connect to body_entered so we can detect the player
 	if not body_entered.is_connected(_on_body_entered):
 		body_entered.connect(_on_body_entered)
 
-	# Initialize arc parameters
 	_start_pos = global_position
 
 	var dir_sign: float = 1.0 if randf() > 0.5 else -1.0
-	var horizontal_dist: float = randf_range(min_horizontal_distance, max_horizontal_distance)
-	var vertical_drop: float = randf_range(min_vertical_drop, max_vertical_drop)
+	var dx: float = randf_range(MIN_DX, MAX_DX) * dir_sign
 
-	_end_offset = Vector2(dir_sign * horizontal_dist, vertical_drop)
-	_landing_pos = _start_pos + _end_offset
+	# Find ground at landing X, not at spawn X
+	var ground_y: float = _find_ground_y(_start_pos + Vector2(dx, 0))
+	_landing_pos = Vector2(_start_pos.x + dx, ground_y - GROUND_CLEARANCE)
 
-	# Animate _t from 0.0 to 1.0 over travel_time using a Tween
+	# Animate _t from 0.0 to 1.0 over TRAVEL_TIME using a Tween
 	_t = 0.0
 	var tween := create_tween()
-	tween.tween_property(self, "_t", 1.0, travel_time).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_property(self, "_t", 1.0, TRAVEL_TIME).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	tween.tween_callback(_on_arc_finished)
 
 func _process(delta: float) -> void:
@@ -53,20 +64,15 @@ func _process(delta: float) -> void:
 		return
 
 	if not _landed:
-		# Arc motion: horizontal lerp + vertical sine-based arc
-		var x := _start_pos.x + _end_offset.x * _t
-		var linear_y := _start_pos.y + _end_offset.y * _t
-		var arc_y := -sin(_t * PI) * arc_height
-		global_position = Vector2(x, linear_y + arc_y)
+		var x: float = lerp(_start_pos.x, _landing_pos.x, _t)
+		var y: float = lerp(_start_pos.y, _landing_pos.y, _t) - sin(_t * PI) * ARC_HEIGHT
+		global_position = Vector2(x, y)
 	else:
-		# Idle bobbing at landing position
-		_bob_time += delta * bob_speed
-		var bob_offset_y := sin(_bob_time) * bob_height
-		global_position = _landing_pos + Vector2(0.0, bob_offset_y)
+		_bob_time += delta * HOVER_SPEED
+		global_position = _landing_pos + Vector2(0.0, sin(_bob_time) * HOVER_HEIGHT)
 
 func _on_arc_finished() -> void:
 	_landed = true
-	# Snap exactly to landing position at the end of the tween
 	global_position = _landing_pos
 
 func _on_body_entered(body: Node) -> void:

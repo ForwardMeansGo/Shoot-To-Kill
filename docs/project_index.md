@@ -28,7 +28,7 @@ Core gameplay pillars:
 - Permanent progression: Stash (inventory) and Loadout (equipment) systems
 - ItemDatabase autoload for centralized item metadata
 - Shop system for purchasing items with Essence and level gating
-- Coin pickup system with arc motion and idle bobbing
+- Coin pickup system with arc-to-ground landing using ground detection, then hover/bob (motion simulated; no physics body)
 - Tavern hub with shop interaction and run door
 - Scene management (death → tavern, door → new run)
 - Debug console (debug builds only) with command system and input blocking
@@ -111,11 +111,16 @@ Current dev focus: **Combat polish + enemy interactions**
 - `current_health` initialized in `_ready()`.
 - `invulnerability_time` exported (default 0.5s).
 - `take_damage(amount)`:
+  - Returns early if `godmode_enabled` is true.
   - Checks invulnerability timer (ignores damage if active).
   - Reduces health (clamped to 0 minimum).
   - Sets invulnerability timer.
   - Emits `health_changed(current_health, max_health)` signal.
   - Calls `die()` if health <= 0.
+- **Godmode**:
+  - `godmode_enabled` boolean on Player.
+  - When enabled, `take_damage()` returns early (no HP change).
+  - Debug console toggles this.
 - `die()`:
   - Emits `died` signal.
   - Calls `GameManager.on_player_died()` to handle scene transition.
@@ -212,16 +217,32 @@ Current dev focus: **Combat polish + enemy interactions**
 ### State Machine
 - Three states: `CHASE`, `ATTACK`, `DEAD`.
 - `CHASE`: Moves horizontally toward player.
-- `ATTACK`: Stops movement, deals repeated contact damage.
+- `ATTACK`: Continues pressing toward player at reduced speed, deals repeated contact damage.
 - `DEAD`: All physics disabled, enemy removed.
 
 ### Movement
 - Moves toward exported `player` reference in `CHASE` state.
 - Player reference can be assigned via `set_player(p: Node2D)` method (used by WaveManager).
-- Stops horizontal movement in `ATTACK` state.
+- Continues pressing toward player at reduced speed in `ATTACK` state (via `attack_move_multiplier`).
 - Applies gravity (except when `DEAD`).
 - Sprite flips depending on direction.
 - Dead enemies skip all physics via early return.
+
+### Enemy Facing Stability (Deadzone)
+- Prevents flip jitter when enemy is close to the player.
+- Only updates facing when X distance exceeds `face_deadzone_px`.
+- Uses `facing_left` boolean to track current facing direction.
+
+### Enemy Separation Force (Crowd Flow)
+- Uses `SeparationArea` (Area2D sensor) to detect nearby enemies.
+- Applies a lightweight horizontal repulsion force in CHASE state only.
+- Uses inverse distance weighting and clamps to `separation_max_push`.
+- Limits neighbors processed via `separation_max_neighbors`.
+- Exports: `separation_strength`, `separation_max_push`, `separation_max_neighbors`, `separation_min_dist_px`.
+
+### Enemy ATTACK Movement
+- In ATTACK, enemy continues pressing toward player at reduced speed via `attack_move_multiplier`.
+- Export: `attack_move_multiplier` (default 0.35).
 
 ### Health
 - `max_health` exported (default 100).
@@ -250,11 +271,12 @@ Current dev focus: **Combat polish + enemy interactions**
 
 ### Damage Numbers
 - Exported `damage_number_scene`.
-- Instantiates on hit at `global_position + Vector2(15, -10)`.
+- Instantiates on hit at `global_position + Vector2(2, -19)`.
+- Note: This offset assumes the damage number scene itself is visually centered.
 - **Color System**:
   - Normal hits: white
   - Crit hits: yellow
-  - Killing blows: red (priority over crit)
+  - Killing blows: red `Color(1.0, 0.201, 0.059, 1.0)` (priority over crit)
 - **Arc System**:
   - Random left/right arc direction for normal hits.
   - Crit/killing blows: arc opposite to enemy movement direction.
@@ -275,17 +297,25 @@ Current dev focus: **Combat polish + enemy interactions**
 - **Once the enemy dies, they can no longer enter ATTACK or deal damage.**
 - **State transitions**:
   - Player enters `DamageArea` → state becomes `ATTACK`.
-  - Player exits `DamageArea` → state returns to `CHASE`.
+  - Player exits `DamageArea` → state returns to `CHASE` (only if player truly no longer overlapping).
 - **Repeated damage**:
   - While in `ATTACK` state, deals `contact_damage` every `contact_cooldown` seconds.
-  - Enemy stops horizontal movement to prevent pushing through player.
+  - Enemy continues pressing toward player at reduced speed (via `attack_move_multiplier`).
+- **Contact Damage Robustness**:
+  - Uses DamageArea overlap check on body_exited to avoid dropping out of ATTACK incorrectly.
+  - Checks `damage_area.get_overlapping_bodies()` before switching to CHASE.
+  - Only switches to CHASE if player is truly no longer overlapping.
+- **Early Return Safety When Player Dies**:
+  - After applying contact damage, checks if player health <= 0.
+  - Early return from `_physics_process()` to prevent `move_and_slide()` on destroyed physics space.
 - `_on_damage_area_body_entered(body)`:
   - Returns early if `DEAD`.
   - Handles parent/child node detection.
-  - Sets state to `ATTACK` if player detected.
+  - Sets `player` reference and state to `ATTACK` if player detected.
 - `_on_damage_area_body_exited(body)`:
   - Returns early if `DEAD`.
-  - Sets state back to `CHASE` if player exits.
+  - Handles parent/child node detection.
+  - Checks overlap before switching to CHASE (see robust exit logic above).
 
 ### Death System
 - `die()` function:
@@ -313,7 +343,7 @@ Current dev focus: **Combat polish + enemy interactions**
   - Exported `silver_coin_scene` and `gold_coin_scene` (PackedScene).
   - Exported `silver_drop_chance` (default 0.5) and `gold_drop_chance` (default 0.25).
   - Each coin type has independent drop chance (can drop both, one, or neither).
-  - Coins spawn at enemy's `global_position` when dropped.
+  - Coins spawn at `global_position + COIN_SPAWN_OFFSET + Vector2(randf_range(-3.0, 3.0), 0.0)` (fixed Y offset with small X jitter to prevent stacking).
 
 ### Group
 - Enemy registers in `"enemy"` group.
@@ -390,7 +420,7 @@ Current dev focus: **Combat polish + enemy interactions**
 - **Visual**
   - Normal: white, default size.
   - Crit: yellow, 1.5x scale.
-  - Killing blow: red, 1.5x scale.
+  - Killing blow: red `Color(1.0, 0.201, 0.059, 1.0)`, 1.5x scale.
 - **Motion**
   - Parametric arc:
     - `t` animates from 0 → 0.6
@@ -449,8 +479,8 @@ Current dev focus: **Combat polish + enemy interactions**
 - **Scene Management**:
   - `TAVERN_SCENE_PATH`: Path to Tavern scene (`res://Scenes/Tavern.tscn`).
   - `RUN_SCENE_PATH`: Path to run scene (`res://Scenes/level_01.tscn`).
-  - `go_to_tavern()`: Transitions to Tavern scene.
-  - `start_new_run()`: Transitions to run scene (starts new run).
+  - `go_to_tavern()`: Transitions to Tavern scene (uses deferred call to prevent physics errors).
+  - `start_new_run()`: Transitions to run scene (uses deferred call to prevent physics errors).
   - `on_player_died()`: Converts gold to essence, then transitions to Tavern.
   - `reset_run_state()`: Resets run-only data (including gold).
 
@@ -598,7 +628,7 @@ Current dev focus: **Combat polish + enemy interactions**
 - `game/Scripts/weapons/weapon_pistol.gd` - Pistol weapon implementation (semi-auto)
 - `game/Scripts/weapons/weapon_assault_rifle.gd` - Assault Rifle weapon implementation (full-auto capable)
 - `game/Scripts/weapons/bullet.gd` - Bullet movement and collision
-- `game/Scripts/coin.gd` - Coin pickup system with arc motion and bobbing animation
+- `game/Scripts/coin.gd` - Coin animation: arc-to-ground landing using ground detection, then hover/bob (motion simulated; no physics body)
 - `game/Scripts/tavern_bartender.gd` - Bartender interaction script (opens ShopUI when interacted with)
 - `game/Scripts/tavern_run_door.gd` - Run door interaction script (calls GameManager.start_new_run())
 
@@ -608,21 +638,35 @@ Current dev focus: **Combat polish + enemy interactions**
 ---
 
 ## Coin System (`coin.gd`)
-- **Lightweight Pickup System**: Uses Area2D (no physics simulation) for performance.
-- **Arc Motion**: Coins animate along a parametric arc from spawn to landing position.
-  - Random horizontal direction (left/right) and distance.
-  - Random vertical drop distance.
-  - Sine-based arc height for smooth curve.
-  - Tween-based animation over `travel_time` (default 0.4s).
-- **Idle Bobbing**: After landing, coins bob up and down using sine wave.
-  - Configurable `bob_height` (default 2.0) and `bob_speed` (default 4.0).
-- **Player Detection**: Uses `Area2D.body_entered` to detect player overlap.
-  - Handles parent/child node relationships (same pattern as enemy contact damage).
-  - Calls `player.add_gold(value)` when collected.
-- **Pickup Behavior**: 
-  - Disables collision and hides sprite instantly on pickup.
-  - Plays optional pickup sound, then frees after audio finishes.
-  - Uses `set_deferred()` for collision shape disabling to avoid physics errors.
+- **Lightweight Pickup**: Area2D, not physics body.
+- **Motion Simulation**: Simulated intentionally for performance/determinism.
+- **Spawn**: Spawned by enemies on death (fixed Y offset + small X jitter to prevent stacking).
+- **Arc-to-ground**:
+  - Pick random ±X, raycast once down at landing X, tween arc to landing position above ground.
+  - Ground mask targets World layer bit 0.
+  - TRAVEL_TIME currently 0.6.
+- **Hover/Bob**: Sine bob after landing.
+- **Pickup**: body_entered, disable collision deferred, hide sprite, play audio, free.
+
+## Debug Console (`debug_console.gd`)
+- Debug builds only.
+- Commands:
+  - `help` - Shows available commands
+  - `give_gold <amount>` - Adds gold to current run
+  - `give_essence <amount>` - Adds essence (permanent currency)
+  - `set_level <level>` - Sets player level
+  - `set_xp <amount>` - Sets player XP amount
+  - `unlock_all` - Unlocks all items in ItemDatabase that aren't already owned
+  - `spawn <count> basicenemy [left|right|points]` - Spawns enemies dynamically
+    - `left/right`: spawn relative to player
+    - `points`: distribute across `WaveSpawnPoints` (round-robin)
+    - clamps count to safe maximum (1-200)
+  - `godmode` - Toggles player invincibility (debug builds only)
+- **Aliases**:
+  - `give gold <amount>`: Alias for `give_gold`
+  - `give essence <amount>`: Alias for `give_essence`
+  - `set level <level>`: Alias for `set_level`
+  - `set xp <amount>`: Alias for `set_xp`
 
 ## Known Limitations
 - Limited weapon variety — only Pistol and Assault Rifle implemented.

@@ -251,10 +251,15 @@ Bullets use raycasting each frame to avoid tunneling.
 - `invuln_timer` decremented in `_process()`.
 - `take_damage(amount)`:
   - Returns early if invulnerable.
+  - Returns early if `godmode_enabled` is true.
   - Reduces health (clamped to 0).
   - Sets invulnerability timer.
   - Emits `health_changed` signal.
   - Calls `die()` if health <= 0.
+- **Godmode**:
+  - `godmode_enabled` boolean on Player.
+  - When enabled, `take_damage()` returns early (no HP change).
+  - Debug console toggles this.
 - `die()`:
   - Emits `died` signal.
   - Calls `GameManager.on_player_died()` to handle scene transition.
@@ -383,8 +388,8 @@ Bullets use raycasting each frame to avoid tunneling.
   - `TAVERN_SCENE_PATH`: `"res://Scenes/Tavern.tscn"`
   - `RUN_SCENE_PATH`: `"res://Scenes/level_01.tscn"`
 - **Methods**:
-  - `go_to_tavern()`: Loads and transitions to Tavern scene.
-  - `start_new_run()`: Loads and transitions to run scene (starts new run).
+  - `go_to_tavern()`: Loads and transitions to Tavern scene (uses deferred call to prevent physics errors).
+  - `start_new_run()`: Loads and transitions to run scene (uses deferred call to prevent physics errors).
   - `on_player_died()`: Called on player death. Converts gold to essence, then transitions to Tavern.
 - **Debug Console Initialization**:
   - In debug builds only, instantiates `DebugConsole.tscn` in `_ready()`.
@@ -454,16 +459,31 @@ Bullets use raycasting each frame to avoid tunneling.
 ### State Machine
 Enemies use a state-based system with three states:
 - **CHASE**: Enemy moves horizontally toward player at `move_speed`.
-- **ATTACK**: Enemy stops horizontal movement and deals contact damage repeatedly.
+- **ATTACK**: Enemy continues pressing toward player at reduced speed (via `attack_move_multiplier`) and deals contact damage repeatedly.
 - **DEAD**: Enemy is dead and all physics/movement is disabled.
 
 ### Movement
 - Horizontal chasing toward Player in `CHASE` state.
 - Player reference can be assigned via `set_player(p: Node2D)` method (used by WaveManager).
-- Stops horizontal movement in `ATTACK` state (prevents pushing through player).
+- Continues pressing toward player at reduced speed in `ATTACK` state (via `attack_move_multiplier`).
 - Uses gravity (except when `DEAD`).
 - Sprite flipping based on direction.
 - Dead enemies (`DEAD` state) skip all physics processing via early return in `_physics_process()`.
+
+### Facing Stability Deadzone
+- Prevents flip jitter when enemy is close to the player.
+- Only updates facing when X distance exceeds `face_deadzone_px`.
+- Uses `facing_left` boolean to track current facing direction.
+
+### Separation Force Details
+- Uses `SeparationArea` (Area2D sensor) to detect nearby enemies.
+- Applies a lightweight horizontal repulsion force in CHASE state only.
+- Uses inverse distance weighting and clamps to `separation_max_push`.
+- Limits neighbors processed via `separation_max_neighbors`.
+- Exports: `separation_strength`, `separation_max_push`, `separation_max_neighbors`, `separation_min_dist_px`.
+
+### ATTACK Movement Multiplier
+- In ATTACK, enemy continues pressing toward player at reduced speed via `attack_move_multiplier`.
 
 ### Health
 - `max_health` exported (default 100).
@@ -508,7 +528,8 @@ Enemies use a state-based system with three states:
 
 ### Damage Numbers
 - Exported `damage_number_scene` (PackedScene).
-- Spawned on each hit at `global_position + Vector2(15, -10)`.
+- Spawned on each hit at `global_position + Vector2(2, -19)`.
+- Note: This offset assumes the damage number scene itself is visually centered.
 - **Properties Passed**:
   - `damage`: int
   - `is_crit`: bool
@@ -533,16 +554,24 @@ Enemies use a state-based system with three states:
     - Deals `contact_damage` to player.
     - Resets `contact_timer` to `contact_cooldown`.
   - This allows continuous damage while player remains in contact range.
+  - Enemy continues pressing toward player at reduced speed (via `attack_move_multiplier`).
+- **Contact Damage Robust Exit Logic**:
+  - Uses DamageArea overlap check on body_exited to avoid dropping out of ATTACK incorrectly.
+  - Checks `damage_area.get_overlapping_bodies()` before switching to CHASE.
+  - Only switches to CHASE if player truly no longer overlapping.
+- **Early Return Safety When Player Dies**:
+  - After applying contact damage, checks if player health <= 0.
+  - Early return from `_physics_process()` to prevent `move_and_slide()` on destroyed physics space.
 - `_on_damage_area_body_entered(body)`:
   - Returns early if enemy is `DEAD`.
   - Handles parent/child node detection:
     - If collider isn't in `"player"` group but parent is, uses parent.
   - If target is in `"player"` group and has `take_damage` method:
-    - Sets state to `ATTACK`.
+    - Sets `player` reference and state to `ATTACK`.
 - `_on_damage_area_body_exited(body)`:
   - Returns early if enemy is `DEAD`.
   - Handles parent/child node detection.
-  - If player exits, sets state back to `CHASE`.
+  - Checks overlap before switching to CHASE (see robust exit logic above).
 
 ### Death System
 - `die()` function:
@@ -571,7 +600,7 @@ Enemies use a state-based system with three states:
   - Exported `silver_coin_scene` and `gold_coin_scene` (PackedScene).
   - Exported `silver_drop_chance` (default 0.5) and `gold_drop_chance` (default 0.25).
   - Each coin type has independent drop chance (can drop both, one, or neither).
-  - Coins spawn at enemy's `global_position` when dropped.
+  - Coins spawn at `global_position + COIN_SPAWN_OFFSET + Vector2(randf_range(-3.0, 3.0), 0.0)` (fixed Y offset with small X jitter to prevent stacking).
 
 ---
 
@@ -665,7 +694,7 @@ On enemy hit:
 ### Color System
 - **Normal hits**: `normal_color` (default: white).
 - **Crit hits**: `crit_color` (default: yellow `Color(1.0, 1.0, 0.2)`).
-- **Killing blows**: `kill_color` (default: red `Color(0.672, 0.101, 0.0, 1.0)`).
+- **Killing blows**: `kill_color` (default: red `Color(1.0, 0.201, 0.059, 1.0)`).
 - Priority: killing blow > crit > normal.
 - Crit and killing blows use 1.5x scale.
 
@@ -781,50 +810,20 @@ On enemy hit:
 ## Coin System
 
 ### Architecture
-- Lightweight pickup system using `Area2D` (no physics simulation).
-- Scene structure: Root `Area2D` with `AnimatedSprite2D`, `CollisionShape2D`, and optional `AudioStreamPlayer2D`.
-- Two coin types: Silver and Gold (separate scenes with different values).
+- **Lightweight Pickup**: Area2D, not physics body.
+- **Motion Simulation**: Simulated intentionally for performance/determinism.
+- **Spawn**: Spawned by enemies on death (fixed Y offset + small X jitter to prevent stacking).
 
-### Arc Motion Animation
-- **Spawn Behavior**: Coins animate along a parametric arc from spawn to landing position.
-- **Arc Parameters**:
-  - Random horizontal direction (left/right) and distance.
-  - Random vertical drop distance.
-  - Sine-based arc height for smooth curve.
-- **Animation**:
-  - Tween-based animation over `travel_time` (default 0.4s).
-  - Parametric `_t` value animates from 0.0 to 1.0.
-  - Horizontal: linear interpolation from start to end.
-  - Vertical: combines linear drop with sine-based arc (`-sin(_t * PI) * arc_height`).
-- **Exports**:
-  - `travel_time`: float (default 0.4s) - time for full arc animation.
-  - `min_horizontal_distance`: float (default 20.0)
-  - `max_horizontal_distance`: float (default 40.0)
-  - `min_vertical_drop`: float (default 8.0)
-  - `max_vertical_drop`: float (default 16.0)
-  - `arc_height`: float (default 25.0) - peak height of the arc.
+### Arc-to-ground
+- Pick random ±X, raycast once down at landing X, tween arc to landing position above ground.
+- Ground mask targets World layer bit 0.
+- TRAVEL_TIME currently 0.6.
 
-### Idle Bobbing
-- **After Landing**: Once arc completes, coins bob up and down in place.
-- **Implementation**: Uses sine wave with `_bob_time` accumulator.
-- **Exports**:
-  - `bob_height`: float (default 2.0) - vertical bobbing distance.
-  - `bob_speed`: float (default 4.0) - bobbing animation speed.
+### Hover/Bob
+- Sine bob after landing.
 
-### Player Detection
-- Uses `Area2D.body_entered` signal to detect player overlap.
-- **Parent/Child Handling**: Mirrors enemy contact damage pattern.
-  - If collider isn't in `"player"` group but parent is, uses parent.
-- **Pickup Behavior**:
-  - Calls `player.add_gold(value)` when collected.
-  - Player forwards gold to `GameManager.add_gold_run()`.
-  - Disables collision shape using `set_deferred("disabled", true)` to avoid physics errors.
-  - Hides sprite instantly for immediate visual feedback.
-  - Plays optional pickup sound, then frees after audio finishes.
-
-### Performance
-- Lightweight design: no RigidBody2D physics, only position updates in `_process()`.
-- Efficient for many coins on screen simultaneously.
+### Pickup
+- body_entered, disable collision deferred, hide sprite, play audio, free.
 
 ## ItemDatabase System
 
@@ -936,6 +935,13 @@ On enemy hit:
 - `give_gold <amount>`: Adds gold to run currency.
 - `give_essence <amount>`: Adds Essence to permanent currency.
 - `set_level <level>`: Sets player level (minimum 1).
+- `set_xp <amount>`: Sets player XP amount.
+- `unlock_all`: Unlocks all items in ItemDatabase that aren't already owned.
+- `spawn <count> basicenemy [left|right|points]`: Spawns enemies dynamically.
+  - `left/right`: spawn relative to player
+  - `points`: distribute across `WaveSpawnPoints` (round-robin)
+  - clamps count to safe maximum
+- `godmode`: Toggles player invincibility (debug builds only).
 - `set_xp <amount>`: Sets player XP amount.
 - `unlock_all`: Unlocks all items in ItemDatabase that aren't already owned.
 - **Aliases**:

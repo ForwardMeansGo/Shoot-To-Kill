@@ -3,6 +3,7 @@ extends CharacterBody2D
 signal died
 
 @export var move_speed: float = 45.0
+@export var attack_move_multiplier: float = 0.35
 @export var gravity: float = 1200.0
 @export var max_health: int = 100
 @export var player: CharacterBody2D
@@ -17,6 +18,11 @@ signal died
 @export_range(0.0, 1.0, 0.01) var silver_drop_chance: float = 0.5
 @export_range(0.0, 1.0, 0.01) var gold_drop_chance: float = 0.25
 @export var xp_reward: int = 10
+@export var face_deadzone_px: float = 8.0  # Distance threshold before flipping sprite
+@export var separation_strength: float = 120.0
+@export var separation_max_push: float = 70.0
+@export var separation_max_neighbors: int = 6
+@export var separation_min_dist_px: float = 1.0
 
 enum State {
 	CHASE,
@@ -24,11 +30,16 @@ enum State {
 	DEAD,
 }
 
+const COIN_SPAWN_OFFSET := Vector2(0, -15)
+
 var state: State = State.CHASE
+var facing_left: bool = false
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var health_bar: TextureProgressBar = $HealthBar
 @onready var damage_bar: TextureProgressBar = $HealthBar/DamageBar
+@onready var damage_area: Area2D = $DamageArea
+@onready var separation_area: Area2D = $SeparationArea
 
 var is_flashing: bool = false
 var flash_material: ShaderMaterial
@@ -51,11 +62,12 @@ func _ready() -> void:
 	state = State.CHASE
 	
 	# Connect DamageArea safely
-	if has_node("DamageArea"):
-		var da: Area2D = $DamageArea
+	if damage_area != null:
+		var da: Area2D = damage_area
 		if not da.body_entered.is_connected(_on_damage_area_body_entered):
 			da.body_entered.connect(_on_damage_area_body_entered)
-			print("DamageArea connected for ", name)
+			if OS.is_debug_build():
+				print("DamageArea connected for ", name)
 		if not da.body_exited.is_connected(_on_damage_area_body_exited):
 			da.body_exited.connect(_on_damage_area_body_exited)
 
@@ -72,6 +84,9 @@ func _physics_process(delta: float) -> void:
 		if player.is_in_group("player") and player.has_method("take_damage"):
 			player.take_damage(contact_damage)
 			contact_timer = contact_cooldown
+			# If player died from this damage, return early to avoid move_and_slide() on destroyed physics space
+			if "current_health" in player and player.current_health <= 0:
+				return
 	
 	# Gravity
 	if not is_on_floor():
@@ -88,17 +103,82 @@ func _physics_process(delta: float) -> void:
 	match state:
 		State.CHASE:
 			velocity.x = dir_x * move_speed
+			# Apply separation force to flow around other enemies
+			_apply_separation(delta)
 		State.ATTACK:
-			# While attacking / in contact range, don't try to push through the player
-			velocity.x = 0.0
-		State.DEAD:
-			velocity.x = 0.0
+			# Keep pressing toward the player slightly while attacking
+			if player != null:
+				velocity.x = dir_x * move_speed * attack_move_multiplier
+			else:
+				velocity.x = 0.0
 
-	# Flip sprite based on intended direction of movement (still want to face the player)
-	if dir_x != 0.0:
-		sprite.flip_h = dir_x < 0.0
+	# Update facing with deadzone to prevent jitter
+	if player != null:
+		var distance_x: float = abs(player.global_position.x - global_position.x)
+		if distance_x > face_deadzone_px:
+			var should_face_left: bool = player.global_position.x < global_position.x
+			if facing_left != should_face_left:
+				facing_left = should_face_left
+				sprite.flip_h = facing_left
 
 	move_and_slide()
+
+func _apply_separation(delta: float) -> void:
+	# Only apply separation during CHASE state
+	if state != State.CHASE:
+		return
+	
+	# Get separation area
+	if separation_area == null:
+		return
+	
+	# Get overlapping bodies
+	var overlapping_bodies := separation_area.get_overlapping_bodies()
+	if overlapping_bodies.is_empty():
+		return
+	
+	var separation_push: float = 0.0
+	var neighbor_count: int = 0
+	
+	# Process up to separation_max_neighbors enemies
+	for overlapping_body: Node2D in overlapping_bodies:
+		if neighbor_count >= separation_max_neighbors:
+			break
+		
+		# Only process enemies (ignore player, world, etc.)
+		if not overlapping_body.is_in_group("enemy"):
+			continue
+		
+		# Skip self
+		if overlapping_body == self:
+			continue
+		
+		# Compute horizontal distance
+		var dx: float = global_position.x - overlapping_body.global_position.x
+		var abs_dx: float = abs(dx)
+		
+		# Skip if too close (prevents division by zero and jitter)
+		if abs_dx < separation_min_dist_px:
+			continue
+		
+		# Push direction: away from neighbor
+		var push_dir: float = sign(dx)
+		
+		# Weight by closeness (closer = stronger push)
+		# Inverse distance weighting: stronger when closer
+		var weight: float = separation_strength / abs_dx
+		separation_push += push_dir * weight
+		
+		neighbor_count += 1
+	
+	# Convert to velocity adjustment and clamp
+	if neighbor_count > 0:
+		# Average the push across neighbors
+		separation_push /= float(neighbor_count)
+		# Clamp to max push
+		separation_push = clamp(separation_push, -separation_max_push, separation_max_push)
+		# Apply to velocity (X only, no vertical movement)
+		velocity.x += separation_push
 
 func set_player(p: Node2D) -> void:
 	player = p
@@ -120,7 +200,7 @@ func take_damage(amount: int, is_crit: bool = false) -> void:
 	# Spawn damage number if scene is set
 	if damage_number_scene != null:
 		var dmg = damage_number_scene.instantiate()
-		dmg.global_position = global_position + Vector2(15, -10)
+		dmg.global_position = global_position + Vector2(2, -19)
 		if "damage" in dmg:
 			dmg.damage = amount
 		if "is_crit" in dmg:
@@ -147,7 +227,7 @@ func flash_hit() -> void:
 	# Turn flash ON (full white)
 	flash_material.set_shader_parameter("flash_amount", clamp(flash_intensity, 0.0, 1.0))
 	
-	# Keep it white for ~0.5 seconds
+	# Keep it white briefly (flash_duration)
 	await get_tree().create_timer(flash_duration).timeout
 	
 	# Turn flash OFF (back to original)
@@ -183,7 +263,8 @@ func _on_damage_area_body_entered(body: Node) -> void:
 	if state == State.DEAD:
 		return
 	
-	print("DamageArea entered by: ", body, " name=", body.name, " groups=", body.get_groups())
+	if OS.is_debug_build():
+		print("DamageArea entered by: ", body, " name=", body.name, " groups=", body.get_groups())
 	
 	var target := body
 	
@@ -192,7 +273,9 @@ func _on_damage_area_body_entered(body: Node) -> void:
 		target = target.get_parent()
 	
 	if target.is_in_group("player") and target.has_method("take_damage"):
-		print("Player entered DamageArea: ", target.name)
+		if OS.is_debug_build():
+			print("Player entered DamageArea: ", target.name)
+		player = target
 		state = State.ATTACK
 
 func _on_damage_area_body_exited(body: Node) -> void:
@@ -205,18 +288,34 @@ func _on_damage_area_body_exited(body: Node) -> void:
 		target = target.get_parent()
 	
 	if target.is_in_group("player"):
-		# Player is no longer in contact range; go back to chasing
-		state = State.CHASE
+		# Check if player is truly no longer overlapping before switching to CHASE
+		if damage_area != null:
+			var overlapping_bodies := damage_area.get_overlapping_bodies()
+			var player_still_overlapping: bool = false
+			
+			for overlapping_body: Node2D in overlapping_bodies:
+				var check_target: Node = overlapping_body
+				# Handle parent/child node relationships
+				if not check_target.is_in_group("player") and check_target.get_parent() and check_target.get_parent().is_in_group("player"):
+					check_target = check_target.get_parent()
+				
+				if check_target.is_in_group("player"):
+					player_still_overlapping = true
+					break
+			
+			# Only switch to CHASE if player is truly no longer overlapping
+			if not player_still_overlapping:
+				state = State.CHASE
 
 func _drop_loot() -> void:
 	if silver_coin_scene != null and randf() < silver_drop_chance:
 		var c = silver_coin_scene.instantiate()
-		c.global_position = global_position
+		c.global_position = global_position + COIN_SPAWN_OFFSET + Vector2(randf_range(-3.0, 3.0), 0.0)
 		get_tree().current_scene.add_child(c)
 
 	if gold_coin_scene != null and randf() < gold_drop_chance:
 		var c = gold_coin_scene.instantiate()
-		c.global_position = global_position
+		c.global_position = global_position + COIN_SPAWN_OFFSET + Vector2(randf_range(-3.0, 3.0), 0.0)
 		get_tree().current_scene.add_child(c)
 
 func die() -> void:

@@ -29,6 +29,7 @@ var facing_dir: int = 1  # +1 = facing right, -1 = facing left
 var was_on_floor: bool = true
 var is_landing: bool = false
 var gold: float = 0.0
+var godmode_enabled: bool = false
 
 @export var primary_weapon_scene: PackedScene
 @export var secondary_weapon_scene: PackedScene
@@ -168,7 +169,7 @@ func _physics_process(delta: float) -> void:
 	
 	_update_animation()
 
-func _input(event: InputEvent) -> void:
+func _input(_event: InputEvent) -> void:
 	if GameManager.has_method("is_debug_input_blocked") and GameManager.is_debug_input_blocked():
 		# Debug console is open: ignore input here, but don't consume it,
 		# so UI elements (like the console) can still process it.
@@ -452,11 +453,13 @@ func set_ui_mouse_mode(is_ui_open: bool) -> void:
 		if crosshair != null:
 			crosshair.visible = true
 
-func _on_weapon_fired(strength: float, duration: float) -> void:
+func _on_weapon_fired(_strength: float, _duration: float) -> void:
 	if cam != null:
-		cam.start_shake(strength, duration)
+		cam.start_shake(_strength, _duration)
 
 func take_damage(amount: int) -> void:
+	if godmode_enabled:
+		return
 	if invuln_timer > 0.0:
 		return
 	

@@ -122,6 +122,10 @@ func _execute_command(cmd_line: String) -> void:
 			_cmd_set_xp(parts)
 		"unlock_all":
 			_cmd_unlock_all()
+		"spawn":
+			_cmd_spawn(parts)
+		"godmode":
+			_cmd_godmode()
 		"give", "set":
 			_cmd_friendly_alias(parts)
 		_:
@@ -135,6 +139,8 @@ func _print_help() -> void:
 	print_line("  set_level <level>")
 	print_line("  set_xp <amount>")
 	print_line("  unlock_all")
+	print_line("  spawn <count> basicenemy [left|right|points]")
+	print_line("  godmode")
 	print_line("")
 	print_line("Aliases:")
 	print_line("  give gold <amount>")
@@ -258,6 +264,138 @@ func _cmd_unlock_all() -> void:
 			gm.item_unlocked.emit(id, category)
 
 	print_line("Success: Unlocked %d items." % count)
+
+# -------------------------------------------------------------------
+# Helper functions for spawn command
+# -------------------------------------------------------------------
+
+const ENEMY_BASIC_SCENE_PATH := "res://Scenes/EnemyBasic.tscn"
+
+func _get_player() -> Node2D:
+	var players := get_tree().get_nodes_in_group("player")
+	if players.is_empty():
+		return null
+	var p := players[0]
+	return p as Node2D
+
+func _get_wave_spawn_points() -> Array[Node2D]:
+	var result: Array[Node2D] = []
+	var scene := get_tree().current_scene
+	if scene == null:
+		return result
+	if not scene.has_node("WaveSpawnPoints"):
+		return result
+
+	var parent := scene.get_node("WaveSpawnPoints")
+	for c in parent.get_children():
+		if c is Node2D and ("spawn_group" in c):
+			result.append(c as Node2D)
+	return result
+
+func _spawn_basic_enemy(pos: Vector2, player: Node2D) -> bool:
+	var scene := get_tree().current_scene
+	if scene == null:
+		return false
+
+	var enemy_scene: PackedScene = load(ENEMY_BASIC_SCENE_PATH)
+	if enemy_scene == null:
+		return false
+
+	var enemy := enemy_scene.instantiate()
+	if enemy == null:
+		return false
+
+	# Set position
+	enemy.global_position = pos
+
+	# Set player ref (enemy.gd uses exported var player)
+	if player != null and ("player" in enemy):
+		enemy.player = player
+
+	scene.add_child(enemy)
+	return true
+
+func _cmd_spawn(parts: Array) -> void:
+	# Usage: spawn <count> basicenemy [left|right|points]
+	if parts.size() < 3:
+		print_line("Usage: spawn <count> basicenemy [left|right|points]")
+		return
+
+	var count := _parse_int(parts, 1, 0)
+	if count <= 0:
+		print_line("Usage: spawn <count> basicenemy [left|right|points]")
+		return
+	count = clamp(count, 1, 200)
+
+	var enemy_type := str(parts[2]).to_lower()
+	if enemy_type != "basicenemy":
+		print_line("Unknown enemy type: %s" % enemy_type)
+		print_line("Usage: spawn <count> basicenemy [left|right|points]")
+		return
+
+	var mode := "near"
+	if parts.size() >= 4:
+		mode = str(parts[3]).to_lower()
+		if mode not in ["left", "right", "points"]:
+			print_line("Usage: spawn <count> basicenemy [left|right|points]")
+			return
+
+	var player := _get_player()
+	if player == null:
+		print_line("Error: Player not found in group 'player'")
+		return
+
+	var spawned := 0
+
+	if mode == "points":
+		var points := _get_wave_spawn_points()
+		if points.is_empty():
+			print_line("Warning: No WaveSpawnPoints found. Falling back to near-player spawn.")
+			mode = "near"
+		else:
+			for i in range(count):
+				var sp := points[i % points.size()]
+				var jitter_x := randf_range(-8.0, 8.0)
+				var pos := sp.global_position + Vector2(jitter_x, -16.0)
+				if _spawn_basic_enemy(pos, player):
+					spawned += 1
+			print_line("Success: Spawned %d basicenemy at spawn points." % spawned)
+			return
+
+	# near-player spawn (default/left/right)
+	var spacing := 16.0
+	for i in range(count):
+		var offset_x := 0.0
+
+		if mode == "left":
+			offset_x = -float(i + 1) * spacing
+		elif mode == "right":
+			offset_x = float(i + 1) * spacing
+		else:
+			# alternate sides: +, -, +, -, ...
+			var side := 1.0 if (i % 2 == 0) else -1.0
+			offset_x = side * (float(i / 2) + 1.0) * spacing
+
+		offset_x += randf_range(-6.0, 6.0)
+		var pos := Vector2(player.global_position.x + offset_x, player.global_position.y)
+
+		if _spawn_basic_enemy(pos, player):
+			spawned += 1
+
+	print_line("Success: Spawned %d basicenemy (%s)." % [spawned, mode])
+
+func _cmd_godmode() -> void:
+	var player := _get_player()
+	if player == null:
+		print_line("Error: Player not found")
+		return
+
+	if not ("godmode_enabled" in player):
+		print_line("Error: Player does not support godmode")
+		return
+
+	player.godmode_enabled = not player.godmode_enabled
+	print_line("Godmode: %s" % ("ON" if player.godmode_enabled else "OFF"))
 
 func _cmd_friendly_alias(parts: Array) -> void:
 	if parts.is_empty():

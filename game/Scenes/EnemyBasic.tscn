@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3 uid="uid://b24ka108g6bnw"]
+[gd_scene load_steps=14 format=3 uid="uid://b24ka108g6bnw"]
 
 [ext_resource type="Script" uid="uid://duycd31rxckwt" path="res://Scripts/enemies/enemy.gd" id="1_hghv2"]
 [ext_resource type="PackedScene" uid="uid://deefc1di02kvu" path="res://Scenes/damage_number.tscn" id="2_0830c"]
@@ -18,11 +18,14 @@ shader_parameter/flash_amount = 0.0
 size = Vector2(10.5, 30)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_rfug7"]
-size = Vector2(12.148073, 32.311775)
+size = Vector2(12.148073, 31.269455)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_kf507"]
+radius = 6.0
 
 [node name="Enemy" type="CharacterBody2D" groups=["enemies"]]
 collision_layer = 4
-collision_mask = 11
+collision_mask = 13
 script = ExtResource("1_hghv2")
 damage_number_scene = ExtResource("2_0830c")
 flash_intensity = 0.8
@@ -35,19 +38,18 @@ xp_reward = 5
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 material = SubResource("ShaderMaterial_042s1")
-position = Vector2(19, 18)
 texture = ExtResource("3_rfug7")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-position = Vector2(19.25, 19)
+position = Vector2(0, 1)
 shape = SubResource("RectangleShape2D_1f0kj")
 
 [node name="HealthBar" type="TextureProgressBar" parent="."]
 z_index = 2
-offset_left = 13.0
-offset_top = -8.0
-offset_right = 46.193665
-offset_bottom = 32.0
+offset_left = -7.0
+offset_top = -24.0
+offset_right = 26.193665
+offset_bottom = 16.0
 scale = Vector2(0.45189348, 0.39640105)
 value = 100.0
 texture_under = ExtResource("3_287tu")
@@ -62,10 +64,17 @@ value = 50.0
 texture_progress = ExtResource("7_042s1")
 
 [node name="DamageArea" type="Area2D" parent="."]
-collision_layer = 4
+collision_layer = 0
 collision_mask = 2
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="DamageArea"]
-position = Vector2(19.5, 18.5)
+position = Vector2(0, 0.99999964)
 scale = Vector2(1.3993989, 0.9594026)
 shape = SubResource("RectangleShape2D_rfug7")
+
+[node name="SeparationArea" type="Area2D" parent="."]
+collision_layer = 0
+collision_mask = 4
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="SeparationArea"]
+shape = SubResource("CircleShape2D_kf507")

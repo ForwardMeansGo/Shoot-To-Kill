@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=4 uid="uid://bqygnbemul856"]
+[gd_scene load_steps=16 format=4 uid="uid://bqygnbemul856"]
 
 [ext_resource type="PackedScene" uid="uid://bfwdbdyqwvha" path="res://Scenes/player.tscn" id="1_w0j5r"]
 [ext_resource type="PackedScene" uid="uid://bgl3dadmuu1pk" path="res://Scenes/HUD.tscn" id="2_8ea0k"]
@@ -10,6 +10,7 @@
 [ext_resource type="Script" uid="uid://cjx3a0nc6afid" path="res://Scripts/tavern_run_door.gd" id="8_hm7uq"]
 [ext_resource type="Texture2D" uid="uid://m167w3rpunal" path="res://Assets/Sprites/Enviroment/TavernLeaveDoor1.png" id="9_mm7un"]
 [ext_resource type="PackedScene" uid="uid://bpr25xdlfxchw" path="res://Scenes/shopUI.tscn" id="10_d72gp"]
+[ext_resource type="PackedScene" uid="uid://b24ka108g6bnw" path="res://Scenes/EnemyBasic.tscn" id="11_8kk68"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_vsbuj"]
 texture = ExtResource("4_rp73c")
@@ -104,3 +105,6 @@ text = "E: Start Run"
 
 [node name="ShopUI" parent="CanvasLayer" instance=ExtResource("10_d72gp")]
 visible = false
+
+[node name="Enemy" parent="." instance=ExtResource("11_8kk68")]
+position = Vector2(-660, -21)

@@ -43,6 +43,7 @@ var facing_dir: int = 1  # +1 = facing right, -1 = facing left
 var was_on_floor: bool = true
 var is_landing: bool = false
 var gold: float = 0.0
+var godmode_enabled: bool = false
 
 @export var primary_weapon_scene: PackedScene
 @export var secondary_weapon_scene: PackedScene
@@ -181,7 +182,7 @@ func _physics_process(delta: float) -> void:
 	
 	_update_animation()
 
-func _input(event: InputEvent) -> void:
+func _input(_event: InputEvent) -> void:
 	if GameManager.has_method("is_debug_input_blocked") and GameManager.is_debug_input_blocked():
 		# Debug console is open: ignore input here, but don't consume it,
 		# so UI elements (like the console) can still process it.
@@ -465,11 +466,13 @@ func set_ui_mouse_mode(is_ui_open: bool) -> void:
 		if crosshair != null:
 			crosshair.visible = true
 
-func _on_weapon_fired(strength: float, duration: float) -> void:
+func _on_weapon_fired(_strength: float, _duration: float) -> void:
 	if cam != null:
-		cam.start_shake(strength, duration)
+		cam.start_shake(_strength, _duration)
 
 func take_damage(amount: int) -> void:
+	if godmode_enabled:
+		return
 	if invuln_timer > 0.0:
 		return
 	
@@ -521,6 +524,7 @@ extends CharacterBody2D
 signal died
 
 @export var move_speed: float = 45.0
+@export var attack_move_multiplier: float = 0.35
 @export var gravity: float = 1200.0
 @export var max_health: int = 100
 @export var player: CharacterBody2D
@@ -535,6 +539,11 @@ signal died
 @export_range(0.0, 1.0, 0.01) var silver_drop_chance: float = 0.5
 @export_range(0.0, 1.0, 0.01) var gold_drop_chance: float = 0.25
 @export var xp_reward: int = 10
+@export var face_deadzone_px: float = 8.0  # Distance threshold before flipping sprite
+@export var separation_strength: float = 120.0
+@export var separation_max_push: float = 70.0
+@export var separation_max_neighbors: int = 6
+@export var separation_min_dist_px: float = 1.0
 
 enum State {
 	CHASE,
@@ -542,11 +551,16 @@ enum State {
 	DEAD,
 }
 
+const COIN_SPAWN_OFFSET := Vector2(0, -15)
+
 var state: State = State.CHASE
+var facing_left: bool = false
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var health_bar: TextureProgressBar = $HealthBar
 @onready var damage_bar: TextureProgressBar = $HealthBar/DamageBar
+@onready var damage_area: Area2D = $DamageArea
+@onready var separation_area: Area2D = $SeparationArea
 
 var is_flashing: bool = false
 var flash_material: ShaderMaterial
@@ -569,11 +583,12 @@ func _ready() -> void:
 	state = State.CHASE
 	
 	# Connect DamageArea safely
-	if has_node("DamageArea"):
-		var da: Area2D = $DamageArea
+	if damage_area != null:
+		var da: Area2D = damage_area
 		if not da.body_entered.is_connected(_on_damage_area_body_entered):
 			da.body_entered.connect(_on_damage_area_body_entered)
-			print("DamageArea connected for ", name)
+			if OS.is_debug_build():
+				print("DamageArea connected for ", name)
 		if not da.body_exited.is_connected(_on_damage_area_body_exited):
 			da.body_exited.connect(_on_damage_area_body_exited)
 
@@ -590,6 +605,9 @@ func _physics_process(delta: float) -> void:
 		if player.is_in_group("player") and player.has_method("take_damage"):
 			player.take_damage(contact_damage)
 			contact_timer = contact_cooldown
+			# If player died from this damage, return early to avoid move_and_slide() on destroyed physics space
+			if "current_health" in player and player.current_health <= 0:
+				return
 	
 	# Gravity
 	if not is_on_floor():
@@ -606,17 +624,82 @@ func _physics_process(delta: float) -> void:
 	match state:
 		State.CHASE:
 			velocity.x = dir_x * move_speed
+			# Apply separation force to flow around other enemies
+			_apply_separation(delta)
 		State.ATTACK:
-			# While attacking / in contact range, don't try to push through the player
-			velocity.x = 0.0
-		State.DEAD:
-			velocity.x = 0.0
+			# Keep pressing toward the player slightly while attacking
+			if player != null:
+				velocity.x = dir_x * move_speed * attack_move_multiplier
+			else:
+				velocity.x = 0.0
 
-	# Flip sprite based on intended direction of movement (still want to face the player)
-	if dir_x != 0.0:
-		sprite.flip_h = dir_x < 0.0
+	# Update facing with deadzone to prevent jitter
+	if player != null:
+		var distance_x: float = abs(player.global_position.x - global_position.x)
+		if distance_x > face_deadzone_px:
+			var should_face_left: bool = player.global_position.x < global_position.x
+			if facing_left != should_face_left:
+				facing_left = should_face_left
+				sprite.flip_h = facing_left
 
 	move_and_slide()
+
+func _apply_separation(delta: float) -> void:
+	# Only apply separation during CHASE state
+	if state != State.CHASE:
+		return
+	
+	# Get separation area
+	if separation_area == null:
+		return
+	
+	# Get overlapping bodies
+	var overlapping_bodies := separation_area.get_overlapping_bodies()
+	if overlapping_bodies.is_empty():
+		return
+	
+	var separation_push: float = 0.0
+	var neighbor_count: int = 0
+	
+	# Process up to separation_max_neighbors enemies
+	for overlapping_body: Node2D in overlapping_bodies:
+		if neighbor_count >= separation_max_neighbors:
+			break
+		
+		# Only process enemies (ignore player, world, etc.)
+		if not overlapping_body.is_in_group("enemy"):
+			continue
+		
+		# Skip self
+		if overlapping_body == self:
+			continue
+		
+		# Compute horizontal distance
+		var dx: float = global_position.x - overlapping_body.global_position.x
+		var abs_dx: float = abs(dx)
+		
+		# Skip if too close (prevents division by zero and jitter)
+		if abs_dx < separation_min_dist_px:
+			continue
+		
+		# Push direction: away from neighbor
+		var push_dir: float = sign(dx)
+		
+		# Weight by closeness (closer = stronger push)
+		# Inverse distance weighting: stronger when closer
+		var weight: float = separation_strength / abs_dx
+		separation_push += push_dir * weight
+		
+		neighbor_count += 1
+	
+	# Convert to velocity adjustment and clamp
+	if neighbor_count > 0:
+		# Average the push across neighbors
+		separation_push /= float(neighbor_count)
+		# Clamp to max push
+		separation_push = clamp(separation_push, -separation_max_push, separation_max_push)
+		# Apply to velocity (X only, no vertical movement)
+		velocity.x += separation_push
 
 func set_player(p: Node2D) -> void:
 	player = p
@@ -638,7 +721,7 @@ func take_damage(amount: int, is_crit: bool = false) -> void:
 	# Spawn damage number if scene is set
 	if damage_number_scene != null:
 		var dmg = damage_number_scene.instantiate()
-		dmg.global_position = global_position + Vector2(15, -10)
+		dmg.global_position = global_position + Vector2(2, -19)
 		if "damage" in dmg:
 			dmg.damage = amount
 		if "is_crit" in dmg:
@@ -665,7 +748,7 @@ func flash_hit() -> void:
 	# Turn flash ON (full white)
 	flash_material.set_shader_parameter("flash_amount", clamp(flash_intensity, 0.0, 1.0))
 	
-	# Keep it white for ~0.5 seconds
+	# Keep it white briefly (flash_duration)
 	await get_tree().create_timer(flash_duration).timeout
 	
 	# Turn flash OFF (back to original)
@@ -701,7 +784,8 @@ func _on_damage_area_body_entered(body: Node) -> void:
 	if state == State.DEAD:
 		return
 	
-	print("DamageArea entered by: ", body, " name=", body.name, " groups=", body.get_groups())
+	if OS.is_debug_build():
+		print("DamageArea entered by: ", body, " name=", body.name, " groups=", body.get_groups())
 	
 	var target := body
 	
@@ -710,7 +794,9 @@ func _on_damage_area_body_entered(body: Node) -> void:
 		target = target.get_parent()
 	
 	if target.is_in_group("player") and target.has_method("take_damage"):
-		print("Player entered DamageArea: ", target.name)
+		if OS.is_debug_build():
+			print("Player entered DamageArea: ", target.name)
+		player = target
 		state = State.ATTACK
 
 func _on_damage_area_body_exited(body: Node) -> void:
@@ -723,18 +809,34 @@ func _on_damage_area_body_exited(body: Node) -> void:
 		target = target.get_parent()
 	
 	if target.is_in_group("player"):
-		# Player is no longer in contact range; go back to chasing
-		state = State.CHASE
+		# Check if player is truly no longer overlapping before switching to CHASE
+		if damage_area != null:
+			var overlapping_bodies := damage_area.get_overlapping_bodies()
+			var player_still_overlapping: bool = false
+			
+			for overlapping_body: Node2D in overlapping_bodies:
+				var check_target: Node = overlapping_body
+				# Handle parent/child node relationships
+				if not check_target.is_in_group("player") and check_target.get_parent() and check_target.get_parent().is_in_group("player"):
+					check_target = check_target.get_parent()
+				
+				if check_target.is_in_group("player"):
+					player_still_overlapping = true
+					break
+			
+			# Only switch to CHASE if player is truly no longer overlapping
+			if not player_still_overlapping:
+				state = State.CHASE
 
 func _drop_loot() -> void:
 	if silver_coin_scene != null and randf() < silver_drop_chance:
 		var c = silver_coin_scene.instantiate()
-		c.global_position = global_position
+		c.global_position = global_position + COIN_SPAWN_OFFSET + Vector2(randf_range(-3.0, 3.0), 0.0)
 		get_tree().current_scene.add_child(c)
 
 	if gold_coin_scene != null and randf() < gold_drop_chance:
 		var c = gold_coin_scene.instantiate()
-		c.global_position = global_position
+		c.global_position = global_position + COIN_SPAWN_OFFSET + Vector2(randf_range(-3.0, 3.0), 0.0)
 		get_tree().current_scene.add_child(c)
 
 func die() -> void:
@@ -1133,7 +1235,7 @@ func _ready() -> void:
 	else:
 		_wave_manager = null
 
-func _on_player_health_changed(current: int, max: int) -> void:
+func _on_player_health_changed(current: int, max_health: int) -> void:
 	if health_bar == null:
 		return
 
@@ -1174,7 +1276,7 @@ func _on_wave_started(wave_index: int) -> void:
 		return
 	wave_label.text = "WAVE: %d" % wave_index
 
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	if _wave_manager == null:
 		return
 
@@ -1590,7 +1692,7 @@ extends Node2D
 
 @export var normal_color: Color = Color.WHITE
 @export var crit_color: Color = Color(1.0, 1.0, 0.2) # yellow-ish
-@export var kill_color: Color = Color(0.614, 0.088, 0.0, 1.0) # red-ish
+@export var kill_color: Color = Color(1.0, 0.201, 0.059, 1.0) # red-ish
 
 @export var damage: int = 0
 @export var lifetime: float = 0.3
@@ -1721,57 +1823,68 @@ func _on_AutoFreeTimer_timeout() -> void:
 ### `coin.gd`
 **Location:** `game/Scripts/coin.gd`  
 **Extends:** `Area2D`  
-**Function:** Coin pickup system with arc motion animation and idle bobbing.
+**Function:** Coin pickup system with arc-to-ground landing using ground detection, then hover/bob animation (motion simulated; no physics body).
 
 ```gdscript
 extends Area2D
 
 @export var value: float = 1.0
 
-# Arc motion settings
-@export var travel_time: float = 0.4          # Time for the full arc
-@export var min_horizontal_distance: float = 20.0
-@export var max_horizontal_distance: float = 40.0
-@export var min_vertical_drop: float = 8.0    # How far down from spawn the coin ends
-@export var max_vertical_drop: float = 16.0
-@export var arc_height: float = 25.0          # How high the arc goes at the peak
+# Ground detection / arc-to-ground constants
+const GROUND_MASK := 1 << 0
+const RAY_LENGTH := 2000.0
 
-# Idle bobbing after landing
-@export var bob_height: float = 2.0
-@export var bob_speed: float = 4.0
+const TRAVEL_TIME := 0.6
+const MIN_DX := 14.0
+const MAX_DX := 34.0
+const ARC_HEIGHT := 22.0
+
+const GROUND_CLEARANCE := 8.0  # IMPORTANT: bigger than before to avoid clipping
+const HOVER_HEIGHT := 2.0
+const HOVER_SPEED := 4.0
 
 @onready var sprite: Node2D = $AnimatedSprite2D
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
 @onready var audio_player: AudioStreamPlayer2D = $PickupAudio
 
-var _picked_up: bool = false
-
-var _t: float = 0.0
+var _picked_up := false
+var _t := 0.0
 var _start_pos: Vector2
-var _end_offset: Vector2
 var _landing_pos: Vector2
-var _landed: bool = false
-var _bob_time: float = 0.0
+var _landed := false
+var _bob_time := 0.0
+
+func _find_ground_y(from_pos: Vector2) -> float:
+	var space := get_world_2d().direct_space_state
+	var to_pos := from_pos + Vector2(0, RAY_LENGTH)
+
+	var query := PhysicsRayQueryParameters2D.create(from_pos, to_pos)
+	query.collision_mask = GROUND_MASK
+	query.hit_from_inside = true
+
+	var hit := space.intersect_ray(query)
+	if hit.is_empty():
+		return from_pos.y
+	return float(hit.position.y)
 
 func _ready() -> void:
 	# Connect to body_entered so we can detect the player
 	if not body_entered.is_connected(_on_body_entered):
 		body_entered.connect(_on_body_entered)
 
-	# Initialize arc parameters
 	_start_pos = global_position
 
 	var dir_sign: float = 1.0 if randf() > 0.5 else -1.0
-	var horizontal_dist: float = randf_range(min_horizontal_distance, max_horizontal_distance)
-	var vertical_drop: float = randf_range(min_vertical_drop, max_vertical_drop)
+	var dx: float = randf_range(MIN_DX, MAX_DX) * dir_sign
 
-	_end_offset = Vector2(dir_sign * horizontal_dist, vertical_drop)
-	_landing_pos = _start_pos + _end_offset
+	# Find ground at landing X, not at spawn X
+	var ground_y: float = _find_ground_y(_start_pos + Vector2(dx, 0))
+	_landing_pos = Vector2(_start_pos.x + dx, ground_y - GROUND_CLEARANCE)
 
-	# Animate _t from 0.0 to 1.0 over travel_time using a Tween
+	# Animate _t from 0.0 to 1.0 over TRAVEL_TIME using a Tween
 	_t = 0.0
 	var tween := create_tween()
-	tween.tween_property(self, "_t", 1.0, travel_time).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_property(self, "_t", 1.0, TRAVEL_TIME).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	tween.tween_callback(_on_arc_finished)
 
 func _process(delta: float) -> void:
@@ -1779,20 +1892,15 @@ func _process(delta: float) -> void:
 		return
 
 	if not _landed:
-		# Arc motion: horizontal lerp + vertical sine-based arc
-		var x := _start_pos.x + _end_offset.x * _t
-		var linear_y := _start_pos.y + _end_offset.y * _t
-		var arc_y := -sin(_t * PI) * arc_height
-		global_position = Vector2(x, linear_y + arc_y)
+		var x: float = lerp(_start_pos.x, _landing_pos.x, _t)
+		var y: float = lerp(_start_pos.y, _landing_pos.y, _t) - sin(_t * PI) * ARC_HEIGHT
+		global_position = Vector2(x, y)
 	else:
-		# Idle bobbing at landing position
-		_bob_time += delta * bob_speed
-		var bob_offset_y := sin(_bob_time) * bob_height
-		global_position = _landing_pos + Vector2(0.0, bob_offset_y)
+		_bob_time += delta * HOVER_SPEED
+		global_position = _landing_pos + Vector2(0.0, sin(_bob_time) * HOVER_HEIGHT)
 
 func _on_arc_finished() -> void:
 	_landed = true
-	# Snap exactly to landing position at the end of the tween
 	global_position = _landing_pos
 
 func _on_body_entered(body: Node) -> void:
@@ -2025,14 +2133,14 @@ func add_xp(amount: int) -> void:
 func go_to_tavern() -> void:
 	var scene := load(TAVERN_SCENE_PATH) as PackedScene
 	if scene:
-		get_tree().change_scene_to_packed(scene)
+		get_tree().call_deferred("change_scene_to_packed", scene)
 	else:
 		push_warning("GameManager: TAVERN_SCENE_PATH is invalid: %s" % TAVERN_SCENE_PATH)
 
 func start_new_run() -> void:
 	var scene := load(RUN_SCENE_PATH) as PackedScene
 	if scene:
-		get_tree().change_scene_to_packed(scene)
+		get_tree().call_deferred("change_scene_to_packed", scene)
 	else:
 		push_warning("GameManager: RUN_SCENE_PATH is invalid: %s" % RUN_SCENE_PATH)
 
@@ -2703,6 +2811,10 @@ func _execute_command(cmd_line: String) -> void:
 			_cmd_set_xp(parts)
 		"unlock_all":
 			_cmd_unlock_all()
+		"spawn":
+			_cmd_spawn(parts)
+		"godmode":
+			_cmd_godmode()
 		"give", "set":
 			_cmd_friendly_alias(parts)
 		_:
@@ -2713,9 +2825,10 @@ func _print_help() -> void:
 	print_line("  help")
 	print_line("  give_gold <amount>")
 	print_line("  give_essence <amount>")
-	print_line("  set_level <level>")
 	print_line("  set_xp <amount>")
 	print_line("  unlock_all")
+	print_line("  spawn <count> basicenemy [left|right|points]")
+	print_line("  godmode")
 	print_line("")
 	print_line("Aliases:")
 	print_line("  give gold <amount>")
@@ -2839,6 +2952,138 @@ func _cmd_unlock_all() -> void:
 			gm.item_unlocked.emit(id, category)
 
 	print_line("Success: Unlocked %d items." % count)
+
+# -------------------------------------------------------------------
+# Helper functions for spawn command
+# -------------------------------------------------------------------
+
+const ENEMY_BASIC_SCENE_PATH := "res://Scenes/EnemyBasic.tscn"
+
+func _get_player() -> Node2D:
+	var players := get_tree().get_nodes_in_group("player")
+	if players.is_empty():
+		return null
+	var p := players[0]
+	return p as Node2D
+
+func _get_wave_spawn_points() -> Array[Node2D]:
+	var result: Array[Node2D] = []
+	var scene := get_tree().current_scene
+	if scene == null:
+		return result
+	if not scene.has_node("WaveSpawnPoints"):
+		return result
+
+	var parent := scene.get_node("WaveSpawnPoints")
+	for c in parent.get_children():
+		if c is Node2D and ("spawn_group" in c):
+			result.append(c as Node2D)
+	return result
+
+func _spawn_basic_enemy(pos: Vector2, player: Node2D) -> bool:
+	var scene := get_tree().current_scene
+	if scene == null:
+		return false
+
+	var enemy_scene: PackedScene = load(ENEMY_BASIC_SCENE_PATH)
+	if enemy_scene == null:
+		return false
+
+	var enemy := enemy_scene.instantiate()
+	if enemy == null:
+		return false
+
+	# Set position
+	enemy.global_position = pos
+
+	# Set player ref (enemy.gd uses exported var player)
+	if player != null and ("player" in enemy):
+		enemy.player = player
+
+	scene.add_child(enemy)
+	return true
+
+func _cmd_spawn(parts: Array) -> void:
+	# Usage: spawn <count> basicenemy [left|right|points]
+	if parts.size() < 3:
+		print_line("Usage: spawn <count> basicenemy [left|right|points]")
+		return
+
+	var count := _parse_int(parts, 1, 0)
+	if count <= 0:
+		print_line("Usage: spawn <count> basicenemy [left|right|points]")
+		return
+	count = clamp(count, 1, 200)
+
+	var enemy_type := str(parts[2]).to_lower()
+	if enemy_type != "basicenemy":
+		print_line("Unknown enemy type: %s" % enemy_type)
+		print_line("Usage: spawn <count> basicenemy [left|right|points]")
+		return
+
+	var mode := "near"
+	if parts.size() >= 4:
+		mode = str(parts[3]).to_lower()
+		if mode not in ["left", "right", "points"]:
+			print_line("Usage: spawn <count> basicenemy [left|right|points]")
+			return
+
+	var player := _get_player()
+	if player == null:
+		print_line("Error: Player not found in group 'player'")
+		return
+
+	var spawned := 0
+
+	if mode == "points":
+		var points := _get_wave_spawn_points()
+		if points.is_empty():
+			print_line("Warning: No WaveSpawnPoints found. Falling back to near-player spawn.")
+			mode = "near"
+		else:
+			for i in range(count):
+				var sp := points[i % points.size()]
+				var jitter_x := randf_range(-8.0, 8.0)
+				var pos := sp.global_position + Vector2(jitter_x, -16.0)
+				if _spawn_basic_enemy(pos, player):
+					spawned += 1
+			print_line("Success: Spawned %d basicenemy at spawn points." % spawned)
+			return
+
+	# near-player spawn (default/left/right)
+	var spacing := 16.0
+	for i in range(count):
+		var offset_x := 0.0
+
+		if mode == "left":
+			offset_x = -float(i + 1) * spacing
+		elif mode == "right":
+			offset_x = float(i + 1) * spacing
+		else:
+			# alternate sides: +, -, +, -, ...
+			var side := 1.0 if (i % 2 == 0) else -1.0
+			offset_x = side * (float(i / 2) + 1.0) * spacing
+
+		offset_x += randf_range(-6.0, 6.0)
+		var pos := Vector2(player.global_position.x + offset_x, player.global_position.y)
+
+		if _spawn_basic_enemy(pos, player):
+			spawned += 1
+
+	print_line("Success: Spawned %d basicenemy (%s)." % [spawned, mode])
+
+func _cmd_godmode() -> void:
+	var player := _get_player()
+	if player == null:
+		print_line("Error: Player not found")
+		return
+
+	if not ("godmode_enabled" in player):
+		print_line("Error: Player does not support godmode")
+		return
+
+	player.godmode_enabled = not player.godmode_enabled
+	print_line("Godmode: %s" % ("ON" if player.godmode_enabled else "OFF"))
 
 func _cmd_friendly_alias(parts: Array) -> void:
 	if parts.is_empty():

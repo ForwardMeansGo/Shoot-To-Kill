@@ -76,10 +76,6 @@ collision_layer = 8
 collision_mask = 2
 script = ExtResource("1_7uahe")
 value = 2.0
-travel_time = 0.6
-min_vertical_drop = 25.0
-max_vertical_drop = 25.0
-arc_height = 20.0
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
 sprite_frames = SubResource("SpriteFrames_d12uo")
