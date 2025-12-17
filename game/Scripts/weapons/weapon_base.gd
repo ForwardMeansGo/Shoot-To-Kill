@@ -38,6 +38,23 @@ signal fired(shake_strength: float, shake_duration: float)
 @export var support_hand_offset_right: Vector2 = Vector2.ZERO
 @export var support_hand_offset_left: Vector2 = Vector2.ZERO
 
+# Bullet penetration system
+@export var penetration_min: int = 0
+@export var penetration_max: int = 0
+@export_range(0.0, 1.0, 0.01) var penetration_chance: float = 1.0
+@export var penetration_damage_drop_per_pen: float = 0.10 # 10% per extra enemy
+
+# Bullet range
+@export var max_range: float = 300
+
+# Bullet speed
+@export var bullet_speed: float = 450
+
+# Bullet knockback
+@export var bullet_knockback: float = 15
+@export var knockback_drop_per_pen: float = 0.4
+@export var crit_knockback_multiplier: float = 2.0
+
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var audio_player: AudioStreamPlayer2D = $GunAudio
 
@@ -93,6 +110,28 @@ func spawn_bullet(target_global_pos: Vector2) -> void:
 		bullet.damage = dmg_value
 	if "is_crit" in bullet:
 		bullet.is_crit = is_crit
+	
+	# Set penetration properties on bullet
+	if "penetration_power" in bullet:
+		bullet.penetration_power = roll_penetration_power()
+	if "penetration_damage_drop_per_pen" in bullet:
+		bullet.penetration_damage_drop_per_pen = penetration_damage_drop_per_pen
+	
+	# Set max range on bullet
+	if "max_range" in bullet:
+		bullet.max_range = max_range
+	
+	# Set bullet speed
+	if "speed" in bullet:
+		bullet.speed = bullet_speed
+	
+	# Set bullet knockback
+	if "knockback_strength" in bullet:
+		bullet.knockback_strength = bullet_knockback
+	if "knockback_drop_per_pen" in bullet:
+		bullet.knockback_drop_per_pen = knockback_drop_per_pen
+	if "crit_knockback_multiplier" in bullet:
+		bullet.crit_knockback_multiplier = crit_knockback_multiplier
 
 	get_tree().current_scene.add_child(bullet)
 
@@ -113,6 +152,15 @@ func _roll_damage() -> Dictionary:
 
 func get_aim_dot_lerp_speed() -> float:
 	return aim_dot_lerp_speed
+
+func roll_penetration_power() -> int:
+	if penetration_max <= 0:
+		return 0
+	if randf() > penetration_chance:
+		return 0
+	var lo: int = mini(penetration_min, penetration_max)
+	var hi: int = maxi(penetration_min, penetration_max)
+	return randi_range(lo, hi)
 
 func _play_shot_sound(at_position: Vector2) -> void:
 	# If there's no template audio player or stream, bail out

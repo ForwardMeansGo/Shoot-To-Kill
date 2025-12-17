@@ -1,81 +1,115 @@
-You are scanning and updating the full documentation set for Shoot-To-Kill.
+You are updating the documentation set for Shoot-To-Kill.
+You MUST scan, verify, and synchronise ALL documentation in:
 
-You MUST scan, verify, and synchronise ALL documentation files located in:
 C:\Users\Ewan\Documents\GitHub\Shoot-To-Kill\docs
 
-The docs are:
-1. project_index.md  
-2. gameplay_systems.md  
-3. scripts_copy.md  
-4. workflow.md  
-5. file_structure.md  
-6. todos.md  
+Files:
+1. project_index.md
+2. gameplay_systems.md
+3. scripts_copy.md
+4. workflow.md
+5. file_structure.md
+6. todos.md
 7. change_log.md
 
+You must also scan the live project (scripts, scenes, resources) to determine the actual current game state.
+--------------------------------------------
+## Phase 1 — Scan & Analyse (NO edits allowed)
+--------------------------------------------
+1. Scan all documentation files listed above.
+2. Scan the entire live project (code, scripts, scenes, autoloads, UI).
+3. Perform a full project-wide diff between:
+	Documentation
+	Live implementation
+	Changes made in current chat
+
+4. Identify every discrepancy, including:
+	Missing systems or scripts
+	New systems or scripts (likely from active Chat)
+	Outdated or incorrect descriptions
+	Inconsistent terminology
+	Mismatched variables, exports, signals, or behaviour
+	Systems documented in one file but missing or incorrect in others
+
+5. For scripts_copy.md, compare each script against the repository and note anything that does not match 1:1.
+
+Do NOT modify any documentation in this phase.
 ---------------------------------------
-YOUR RULES – DO NOT IGNORE ANY OF THESE
+## Phase 2 — Change Request (REPORT ONLY)
 ---------------------------------------
+6. Produce a CHANGE REQUEST document that lists:
+	What is missing
+	What is outdated
+	What is incorrect
+	What is inconsistent across files
+	What needs rewriting, removal, or clarification
+7. Clearly reference:
+	Which documentation file(s) are affected
+	Which live script/system they should match
 
-1. **Perform a full project-wide diff analysis before editing ANY file.**
-   - You MUST scan both the documentation AND the current codebase/scripts/scenes to understand the real game state.
-   - Identify every new system, script, feature, variable, signal, mechanic, interaction, UI element, scene, or architectural change.
-   - Check if the documentation already reflects it.
-   - If ANY discrepancy exists, they must be changed to how the system is currently working.
+8. Output ONLY the Change Request.
 
-2. **Absolutely NOTHING may be missed or partially documented.**
-   - If something exists in code or scenes, it MUST exist in documentation.
-   - If something is wrong or outdated in documentation, it MUST be corrected.
+9. Stop and wait for Ewan’s review and approval.
+-------------------------
+## Phase 3 — Approval Gate
+-------------------------
+10. No changes may be applied until explicit approval is given by Ewan.
+11. If approval is denied or adjustments are requested, revise the Change Request only.
+----------------------------------
+## Phase 4 — Apply Approved Changes
+----------------------------------
+12. After approval, update documentation by:
+	Editing only sections that require changes
+	Preserving existing structure and formatting
+	Ensuring accuracy and clarity
 
-3. **Scripts must match 1:1 with live code.**
-   - For scripts_copy.md, extract the latest version of each script directly from the repository.
-   - Ensure script sections reflect the actual behaviour (e.g., debug input blocking, GameManager-only gold, death → Tavern flow, shop behaviour, etc).
+13. Remove documentation for legacy systems that have been fully replaced in live code. This includes (but is not limited to):
+	Systems that no longer exist in the repository
+	Behaviour that is no longer executed at runtime
+	Helper functions, variables, or concepts that have been superseded
+	Visual or gameplay systems that have been redesigned
 
-4. **Cross-reference ALL files during the update.**
-   For every documented system, confirm:
-   - Terminology is consistent across all files.
-   - Descriptions match the actual implementation.
-   - Signals, variables, autoloads, and scene references align.
-   - No system is documented in one file but missing in another.
-   - Nothing contradicts anything else.
+	Rules for removal:
+		Only remove legacy documentation if the live project clearly no longer uses it
+		Do NOT keep outdated descriptions “for reference”
+		Do NOT leave partially-documented or contradictory systems
+		Prefer removal over annotation when a system is fully obsolete
 
-5. **Never hallucinate new systems or invent behaviour.**
-   Only document what already exists in the live project.
+This rule takes precedence over preserving legacy descriptions for completeness.
 
-6. **All edits you make MUST be documented and appended to change_log.md**
-   This must include:
-   - What was missing
-   - What was outdated
-   - What was inconsistent
-   - What needed major rewrites
-   - What was added, removed, corrected, or clarified
+14. Update scripts_copy.md so all scripts match the live repository exactly.
 
-   *change_log.md must never be overwritten — entries must be appended.*
+15. Cross-check all docs to ensure:
+	No contradictions
+	Consistent terminology
+	No undocumented live systems remain
+------------------------
+## Phase 5 — Finalisation
+------------------------
+16. Append a new entry to change_log.md (never overwrite) including:
+	Date
+	Brief titles of major changes
+	Summary of additions, removals, fixes, and rewrites
 
-7. **You MUST NOT modify any documentation file until I have reviewed and approved the CHANGE REPORT.**
-   - First produce the CHANGE REPORT summarising everything that needs modification.
-   - Then wait for confirmation.
-   - Only after approval can you apply changes.
+17. Deliver:
+	All updated documentation files
+	Updated change_log.md
+	Confirmation that:
+		Docs match the live project 100%
+		No systems are missing
+		No contradictions remain
+		scripts_copy.md matches the repo 1:1
+---------------------------
+## Absolute rules (never break)
+---------------------------
+Do not invent systems or behaviour.
+Do not partially document anything.
+Do not apply edits before approval.
+Accuracy beats brevity every time.
+Outdated documentation is more harmful than missing documentation.
+The documentation set must describe the CURRENT project state only.
 
-8. **After approval, perform updates in the cleanest possible way:**
-   - Rewrite only the sections that require changes.
-   - Preserve original formatting and structure.
-   - Maintain clarity, accuracy, and completeness.
+--Start now--
 
-9. **Final output after edits must include:**
-   - All updated documentation files
-   - An updated change_log.md entry (with brief titles of the new systems & a date)
-     - No systems missing
-     - No contradictions remain
-     - All docs are in sync with each other AND the live codebase
-     - All scripts in scripts_copy.md match the real codebase exactly
-     - All new or modified features have been fully documented
-
----------------------------------------
-GOAL
----------------------------------------
-Maintain 100% accuracy across the entire documentation set.
-Missed or outdated documentation can break long-term development,
-so this process must be airtight and thorough.
-
-Begin by scanning and analysing ALL documentation files and the live project codebase.
-Then implement the appropriate changes and update change_log.
+Begin Phase 1 by scanning all documentation and the live project.
+Then proceed to Phase 2 and output the Change Request only.

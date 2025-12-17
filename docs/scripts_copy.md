@@ -516,7 +516,7 @@ func add_gold(amount: float) -> void:
 ### `enemy.gd`
 **Location:** `game/Scripts/enemies/enemy.gd`  
 **Extends:** `CharacterBody2D`  
-**Function:** Enemy AI controller with state machine, health, contact damage, flash effects, health bars, died signal, and set_player method.
+**Function:** Enemy AI controller with state machine, health, contact damage, flash effects, health bars, died signal, set_player method, penetration resistance, and knockback system.
 
 ```gdscript
 extends CharacterBody2D
@@ -544,6 +544,9 @@ signal died
 @export var separation_max_push: float = 70.0
 @export var separation_max_neighbors: int = 6
 @export var separation_min_dist_px: float = 1.0
+@export var penetration_resistance: int = 1
+@export var knockback_decay: float = 18.0
+@export var knockback_max_speed: float = 220.0
 
 enum State {
 	CHASE,
@@ -568,6 +571,7 @@ var flash_material: ShaderMaterial
 var current_health: int
 var contact_timer: float = 0.0
 var damage_bar_tween: Tween
+var knockback_velocity: Vector2 = Vector2.ZERO
 
 func _ready() -> void:
 	current_health = max_health
@@ -642,6 +646,22 @@ func _physics_process(delta: float) -> void:
 				facing_left = should_face_left
 				sprite.flip_h = facing_left
 
+	# --- Knockback (snappy, low-ice) ---
+	# Apply knockback as a short-lived horizontal impulse blended into velocity.
+	# The multiplier makes recovery faster without needing new exports.
+	velocity.x += knockback_velocity.x
+
+	# Stronger decay so knockback stops quickly (prevents "ice sliding").
+	knockback_velocity.x = move_toward(
+		knockback_velocity.x,
+		0.0,
+		knockback_decay * 3.5 * delta
+	)
+
+	# If knockback is tiny, snap to zero to stop micro-sliding.
+	if abs(knockback_velocity.x) < 2.0:
+		knockback_velocity.x = 0.0
+
 	move_and_slide()
 
 func _apply_separation(delta: float) -> void:
@@ -704,6 +724,24 @@ func _apply_separation(delta: float) -> void:
 func set_player(p: Node2D) -> void:
 	player = p
 
+func apply_knockback(dir: Vector2, strength: float) -> void:
+	if strength <= 0.0:
+		return
+	var d := dir
+	if d == Vector2.ZERO:
+		return
+	d = d.normalized()
+
+	# Horizontal knockback only
+	var impulse := d.x * strength
+
+	# If we're already being knocked back in the same direction, add less (prevents long skating).
+	if sign(knockback_velocity.x) == sign(impulse):
+		impulse *= 0.55
+
+	knockback_velocity.x += impulse
+	knockback_velocity.x = clamp(knockback_velocity.x, -knockback_max_speed, knockback_max_speed)
+
 func take_damage(amount: int, is_crit: bool = false) -> void:
 	if state == State.DEAD:
 		return
@@ -728,8 +766,6 @@ func take_damage(amount: int, is_crit: bool = false) -> void:
 			dmg.is_crit = is_crit
 		if "is_killing_blow" in dmg:
 			dmg.is_killing_blow = is_killing_blow
-		if "movement_dir_sign" in dmg:
-			dmg.movement_dir_sign = move_dir_sign
 		get_tree().current_scene.add_child(dmg)
 
 	if current_health <= 0:
@@ -908,6 +944,23 @@ signal fired(shake_strength: float, shake_duration: float)
 @export var support_hand_offset_right: Vector2 = Vector2.ZERO
 @export var support_hand_offset_left: Vector2 = Vector2.ZERO
 
+# Bullet penetration system
+@export var penetration_min: int = 0
+@export var penetration_max: int = 0
+@export_range(0.0, 1.0, 0.01) var penetration_chance: float = 1.0
+@export var penetration_damage_drop_per_pen: float = 0.10 # 10% per extra enemy
+
+# Bullet range
+@export var max_range: float = 300
+
+# Bullet speed
+@export var bullet_speed: float = 450
+
+# Bullet knockback
+@export var bullet_knockback: float = 15
+@export var knockback_drop_per_pen: float = 0.4
+@export var crit_knockback_multiplier: float = 2.0
+
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var audio_player: AudioStreamPlayer2D = $GunAudio
 
@@ -963,6 +1016,28 @@ func spawn_bullet(target_global_pos: Vector2) -> void:
 		bullet.damage = dmg_value
 	if "is_crit" in bullet:
 		bullet.is_crit = is_crit
+	
+	# Set penetration properties on bullet
+	if "penetration_power" in bullet:
+		bullet.penetration_power = roll_penetration_power()
+	if "penetration_damage_drop_per_pen" in bullet:
+		bullet.penetration_damage_drop_per_pen = penetration_damage_drop_per_pen
+	
+	# Set max range on bullet
+	if "max_range" in bullet:
+		bullet.max_range = max_range
+	
+	# Set bullet speed
+	if "speed" in bullet:
+		bullet.speed = bullet_speed
+	
+	# Set bullet knockback
+	if "knockback_strength" in bullet:
+		bullet.knockback_strength = bullet_knockback
+	if "knockback_drop_per_pen" in bullet:
+		bullet.knockback_drop_per_pen = knockback_drop_per_pen
+	if "crit_knockback_multiplier" in bullet:
+		bullet.crit_knockback_multiplier = crit_knockback_multiplier
 
 	get_tree().current_scene.add_child(bullet)
 
@@ -983,6 +1058,15 @@ func _roll_damage() -> Dictionary:
 
 func get_aim_dot_lerp_speed() -> float:
 	return aim_dot_lerp_speed
+
+func roll_penetration_power() -> int:
+	if penetration_max <= 0:
+		return 0
+	if randf() > penetration_chance:
+		return 0
+	var lo: int = mini(penetration_min, penetration_max)
+	var hi: int = maxi(penetration_min, penetration_max)
+	return randi_range(lo, hi)
 
 func _play_shot_sound(at_position: Vector2) -> void:
 	# If there's no template audio player or stream, bail out
@@ -1055,7 +1139,7 @@ func try_shoot(target_global_pos: Vector2) -> bool:
 ### `bullet.gd`
 **Location:** `game/Scripts/weapons/bullet.gd`  
 **Extends:** `Area2D`  
-**Function:** Bullet physics with continuous collision detection, damage handling, and hit effects.
+**Function:** Bullet physics with continuous collision detection, multi-hit penetration, range tracking, speed control, damage handling with cumulative reduction, and knockback application.
 
 ```gdscript
 extends Area2D
@@ -1068,9 +1152,33 @@ extends Area2D
 
 var previous_position: Vector2
 var is_crit: bool = false
+var penetration_power: int = 0
+var penetration_damage_drop_per_pen: float = 0.20
+var _hit_enemy_ids: Dictionary = {} # instance_id -> true
+const MAX_HITS_PER_FRAME := 8
+const PIERCE_EPSILON := 1.0
+var max_range: float = INF
+var _distance_travelled: float = 0.0
+var _enemies_damaged: int = 0
+var knockback_strength: float = 0.0
+var knockback_drop_per_pen: float = 0.20
+var crit_knockback_multiplier: float = 1.0
 
 func _ready() -> void:
 	previous_position = global_position
+	_distance_travelled = 0.0
+	_enemies_damaged = 0
+
+func _resolve_enemy_from_collider(collider: Object) -> Node:
+	if collider == null:
+		return null
+	if collider is Node:
+		var n := collider as Node
+		if n.is_in_group("enemy"):
+			return n
+		if n.get_parent() != null and n.get_parent().is_in_group("enemy"):
+			return n.get_parent()
+	return null
 
 func _physics_process(delta: float) -> void:
 	# Handle lifetime first
@@ -1089,51 +1197,147 @@ func _physics_process(delta: float) -> void:
 	var current_pos: Vector2 = global_position
 	var target_pos: Vector2 = current_pos + direction * speed * delta
 
-	# Add a small extra margin in the same direction to be safe
-	var ray_to: Vector2 = target_pos + direction * 2.0
-
-	# Create raycast query from previous_position to ray_to
-	var space_state: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
-	var query: PhysicsRayQueryParameters2D = PhysicsRayQueryParameters2D.create(previous_position, ray_to)
-	query.collision_mask = collision_mask
-	query.exclude = [self]
-	query.hit_from_inside = true
-
-	var result: Dictionary = space_state.intersect_ray(query)
-
-	# If we hit something this frame
-	if result.size() > 0:
-		var hit_pos: Vector2 = result["position"]
-		var collider: Object = result["collider"]
-
-		global_position = hit_pos
-		_handle_hit(collider)
+	# Track distance traveled for max range check
+	var segment_distance: float = previous_position.distance_to(target_pos)
+	_distance_travelled += segment_distance
+	
+	# Check if bullet has exceeded max range
+	if _distance_travelled >= max_range:
 		queue_free()
 		return
 
-	# No hit – move normally to target position
-	global_position = target_pos
-	
-	# Update previous_position for next frame
-	previous_position = global_position
+	# Add a small extra margin in the same direction to be safe
+	var ray_to: Vector2 = target_pos + direction * 2.0
 
-func _handle_hit(body: Object) -> void:
-	if body is Node:
-		var node: Node = body as Node
+	# Multi-hit penetration loop
+	var space_state: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
+	var segment_from: Vector2 = previous_position
+	var segment_to: Vector2 = ray_to
+	var exclude_list: Array = [self]
+	var hit_count: int = 0
+	var base_damage: int = damage
 
-		# Ignore player, just in case
-		if node.is_in_group("player"):
+	while hit_count < MAX_HITS_PER_FRAME:
+		# Create raycast query for this segment
+		var query: PhysicsRayQueryParameters2D = PhysicsRayQueryParameters2D.create(segment_from, segment_to)
+		query.collision_mask = collision_mask
+		query.exclude = exclude_list
+		query.hit_from_inside = true
+
+		var result: Dictionary = space_state.intersect_ray(query)
+
+		# No hit - move to target position and continue
+		if result.is_empty():
+			global_position = target_pos
+			previous_position = target_pos
 			return
 
-		# Damage enemies
-		if node.is_in_group("enemy") and node.has_method("take_damage"):
-			node.take_damage(damage, is_crit)
+		# Hit something
+		var hit_pos: Vector2 = result["position"]
+		var collider: Object = result["collider"]
+
+		# Exclude this collider from subsequent raycasts using RID
+		if collider is CollisionObject2D:
+			exclude_list.append((collider as CollisionObject2D).get_rid())
+
+		if collider is Node:
+			var node: Node = collider as Node
+
+			# Ignore player
+			if node.is_in_group("player"):
+				# Hit player - stop penetration, but don't damage
+				global_position = hit_pos
+				queue_free()
+				return
+
+		# Resolve enemy from collider (checks collider and parent)
+		var enemy := _resolve_enemy_from_collider(collider)
+		
+		if enemy != null and enemy.has_method("take_damage"):
+			var enemy_id := enemy.get_instance_id()
 			
-			# Spawn hit impact effect if assigned
-			if hit_effect_scene != null:
+			# Check if we already hit this enemy (persists for bullet lifetime)
+			if _hit_enemy_ids.has(enemy_id):
+				# Already hit this enemy - exclude it and continue
+				# Advance segment slightly to continue
+				segment_from = hit_pos + direction.normalized() * PIERCE_EPSILON
+				continue
+
+			# Apply damage to this enemy
+			var damage_to_deal: int = base_damage
+			
+			# Apply cumulative damage drop based on number of enemies already damaged
+			if _enemies_damaged > 0:
+				var step: float = 1.0 - penetration_damage_drop_per_pen
+				if step < 0.0:
+					step = 0.0
+				var damage_multiplier: float = pow(step, float(_enemies_damaged))
+				damage_to_deal = max(1, int(round(float(base_damage) * damage_multiplier)))
+
+			enemy.take_damage(damage_to_deal, is_crit)
+
+			# Apply knockback with crit bonus and penetration reduction
+			var kb: float = knockback_strength
+
+			# Apply crit bonus before penetration scaling
+			if is_crit:
+				kb *= crit_knockback_multiplier
+
+			# Apply penetration-based knockback reduction
+			if _enemies_damaged > 0:
+				var step: float = 1.0 - knockback_drop_per_pen
+				if step < 0.0:
+					step = 0.0
+				kb *= pow(step, float(_enemies_damaged))
+
+			if kb > 0.0 and enemy.has_method("apply_knockback"):
+				enemy.apply_knockback(direction, kb)
+
+			# Spawn hit impact effect if assigned (only on first hit)
+			if _enemies_damaged == 0 and hit_effect_scene != null:
 				var hit_effect = hit_effect_scene.instantiate()
-				hit_effect.global_position = global_position
+				hit_effect.global_position = hit_pos
 				get_tree().current_scene.add_child(hit_effect)
+
+			# Get resistance from enemy (default to 1 if not found)
+			var resistance: int = 1
+			if "penetration_resistance" in enemy:
+				resistance = enemy.penetration_resistance
+
+			# Record this enemy as hit (persists for bullet lifetime)
+			_hit_enemy_ids[enemy_id] = true
+			
+			# Increment enemies damaged counter
+			_enemies_damaged += 1
+
+			# Reduce penetration power
+			penetration_power -= resistance
+
+			# Check if we can continue penetrating
+			if penetration_power >= 1:
+				# Continue piercing - advance segment start past this hit
+				segment_from = hit_pos + direction.normalized() * PIERCE_EPSILON
+				hit_count += 1
+				continue
+			else:
+				# Out of penetration power - stop at this hit
+				global_position = hit_pos
+				queue_free()
+				return
+		elif result.collider is Node:
+			# Hit a Node collider but it's not an enemy (world/props/etc) - stop
+			global_position = hit_pos
+			queue_free()
+			return
+		else:
+			# Hit non-node collider - stop
+			global_position = hit_pos
+			queue_free()
+			return
+
+	# Reached max hits per frame - move to target and continue next frame
+	global_position = target_pos
+	previous_position = target_pos
 ```
 
 ---
@@ -1685,7 +1889,7 @@ extends Node2D
 ### `damage_number.gd`
 **Location:** `game/Scripts/damage_number.gd`  
 **Extends:** `Node2D`  
-**Function:** Floating damage number popup with color coding, arc motion, rotation, and dynamic arc distance.
+**Function:** Floating damage number popup with color coding and pop + fade animation.
 
 ```gdscript
 extends Node2D
@@ -1695,22 +1899,14 @@ extends Node2D
 @export var kill_color: Color = Color(1.0, 0.201, 0.059, 1.0) # red-ish
 
 @export var damage: int = 0
-@export var lifetime: float = 0.3
-@export var float_distance: float = 20.0
-@export var arc_distance: float = 10
-@export var arc_boost_factor: float = 5
 @export var is_crit: bool = false
 var is_killing_blow: bool = false
 
-@export var min_rot_deg: float = 10.0
-@export var max_rot_deg: float = 30.0
-
 @onready var label: RichTextLabel = $Label
 
-var t: float = 0.0
-var start_pos: Vector2
-var direction_sign: float
-var movement_dir_sign: float = 0.0
+const HOLD_TIME := 0.22
+const FADE_TIME := 0.14
+const TOTAL_TIME := HOLD_TIME + FADE_TIME
 
 func _ready() -> void:
 	# Set the label text to the damage value
@@ -1725,75 +1921,45 @@ func _ready() -> void:
 	
 	label.modulate = final_color
 	
-	# Apply crit styling if this is a crit (scale up)
-	if is_killing_blow:
-		scale = Vector2(1.5, 1.5)
-		
-	if is_crit:
-		scale = Vector2(1.5, 1.5)
+	# Apply small random offset
+	global_position += Vector2(
+		randf_range(-5.0, 5.0),
+		randf_range(-3.0, 3.0)
+	)
 	
-	# Apply a very small random horizontal offset
-	var random_x_offset: float = randf_range(-2.0, 2.0)
-	global_position.x += random_x_offset
+	# Set initial scale smaller than normal
+	var base_scale: float = 0.7
 	
-	# Store starting position for arc calculation
-	start_pos = global_position
+	# Apply crit/kill scale multiplier (multiply base scale)
+	if is_killing_blow or is_crit:
+		base_scale *= 1.5
 	
-	# Decide arc direction and rotation based on hit type and enemy movement
-	var base_angle: float = randf_range(min_rot_deg, max_rot_deg)
+	scale = Vector2(base_scale, base_scale)
 	
-	if is_crit or is_killing_blow:
-		# CRIT or FATAL hit:
-		# Arc should go OPPOSITE to enemy movement direction if we know it.
-		if abs(movement_dir_sign) > 0.01:
-			# enemy movement_dir_sign:
-			#   > 0 => moving RIGHT
-			#   < 0 => moving LEFT
-			# We want arc opposite to this:
-			direction_sign = -sign(movement_dir_sign)
-		else:
-			# No clear movement direction, fall back to random arc
-			direction_sign = 1.0 if randf() > 0.5 else -1.0
-		
-		# Rotate in the same direction as the arc (which is already opposite movement)
-		rotation_degrees = direction_sign * base_angle
-	else:
-		# NORMAL hit:
-		# Arc can be random, but NO rotation.
-		direction_sign = 1.0 if randf() > 0.5 else -1.0
-		rotation_degrees = 0.0
-	
-	# Adjust arc distance based on whether arc is going WITH or AGAINST enemy movement
-	var arc_dir = direction_sign
-	var move_dir = movement_dir_sign
-	
-	# Default: use base arc_distance
-	if abs(move_dir) > 0.01:
-		# Arc goes WITH enemy movement → boost
-		if sign(arc_dir) == sign(move_dir):
-			arc_distance *= arc_boost_factor
-		# Arc goes OPPOSITE enemy movement → leave arc_distance as-is
-	# else: enemy is not moving horizontally → do nothing
-	
-	# Create tween for animation
-	var tween: Tween = create_tween()
-	
-	# Animate t from 0.0 to 0.6 over the full lifetime (only play ~60% of the arc)
-	tween.tween_property(self, "t", 0.6, lifetime)
-	
-	# Animate alpha from 1.0 to 0.0 over the full lifetime
+	# Ensure starts fully visible
 	modulate.a = 1.0
-	tween.tween_property(self, "modulate:a", 0.0, lifetime)
 	
-	# When tween finishes, delete the node
-	tween.tween_callback(queue_free).set_delay(lifetime)
-
-func _process(_delta: float) -> void:
-	# Update position based on parametric arc formula
-	# x(t) = start_x + direction_sign * arc_distance * t
-	# y(t) = start_y - float_distance * sin(t * PI)
-	global_position.x = start_pos.x + direction_sign * arc_distance * t
-	global_position.y = start_pos.y - float_distance * sin(t * PI)
+	# Create tween for pop + fade animation
+	var tween := create_tween()
+	tween.set_parallel(true)
+	
+	# Pop: scale up to 1.15, then ease back to 1.0
+	var final_scale: float = 1.0
+	if is_killing_blow or is_crit:
+		final_scale = 2
+	
+	tween.tween_property(self, "scale", Vector2(final_scale * 1.15, final_scale * 1.15), 0.08).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(self, "scale", Vector2(final_scale, final_scale), 0.10).set_delay(0.08)
+	
+	# Drift for total time
+	tween.tween_property(self, "global_position:y", global_position.y - 8.0, TOTAL_TIME)
+	
+	# Fade starts after hold
+	tween.tween_property(self, "modulate:a", 0.0, FADE_TIME).set_delay(HOLD_TIME)
+	
+	tween.set_parallel(false)
+	tween.tween_interval(TOTAL_TIME)
+	tween.tween_callback(queue_free)
 ```
 
 ### `hit_impact.gd`
@@ -3261,13 +3427,13 @@ This document contains all scripts in the Shoot To Kill project, organized by ca
 
 - **Core System Scripts**: GameManager autoload for currency, XP, progression, purchases, scene management, and debug input blocking
 - **Player Scripts**: Player controller with movement, health, shooting, weapon switching (primary/secondary), animation, aiming, two-handed weapon support, gold currency, debug input blocking, and UI mouse mode
-- **Enemy Scripts**: Enemy AI with state machine, health, contact damage, flash effects, health bars, loot drops, XP rewards, died signal, and set_player method
-- **Weapon Scripts**: Base weapon class (with fire rate, full-auto, spread, hand offsets, two-handed support), pistol implementation (semi-auto), assault rifle implementation (full-auto capable), and bullet physics
+- **Enemy Scripts**: Enemy AI with state machine, health, contact damage, flash effects, health bars, loot drops, XP rewards, died signal, set_player method, penetration resistance, and knockback system
+- **Weapon Scripts**: Base weapon class (with fire rate, full-auto, spread, hand offsets, two-handed support, bullet penetration, range, speed, and knockback), pistol implementation (semi-auto), assault rifle implementation (full-auto capable), and bullet physics with multi-hit penetration
 - **Wave System Scripts**: WaveManager for endless waves with difficulty scaling, and WaveSpawnPoint for spawn point markers
 - **UI Scripts**: HUD manager (health, currency, XP, wave display, kill/remaining stats), shop UI, debug console, and crosshair system with outer pulse effect
 - **Progression System Scripts**: ItemDatabase for item metadata, ShopUI for purchasing items
 - **Tavern Scripts**: Bartender interaction (opens shop) and RunDoor interaction (starts new run)
-- **Effect Scripts**: Damage numbers, hit impacts, blood effects, and coin pickups
+- **Effect Scripts**: Damage numbers with pop + fade animation, hit impacts, blood effects, and coin pickups
 - **Camera Scripts**: Camera shake system
 
 All scripts are current as of the latest project state.

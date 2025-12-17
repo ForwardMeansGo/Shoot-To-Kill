@@ -9,6 +9,8 @@ script = ExtResource("1_pfemm")
 shake_strength = 0.0
 shake_duration = 0.0
 aim_dot_lerp_speed = 15.0
+penetration_damage_drop_per_pen = 0.2
+max_range = 350.0
 
 [node name="Muzzle" type="Marker2D" parent="."]
 position = Vector2(11, 0)

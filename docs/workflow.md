@@ -110,6 +110,21 @@ ChatGPT should never suggest editing code directly in Godot and should never pro
 
 ---
 
+# Example Cursor Prompt:
+
+CURSOR PROMPT — Title of prompt goes here:
+
+File to Edit: File to edit goes here
+What needs doing: e.g "update the penetration raycast hit handling so a bullet can only apply damage to the same enemy once for its entire lifetime."
+
+Requirements (as a minimum, always have these):
+-Do NOT change existing inspector exports/settings.
+-Only edit: document(s) to edit go here
+-Any additional requirements
+
+Rest of Prompt
+---
+
 # Summary
 
 The workflow is:

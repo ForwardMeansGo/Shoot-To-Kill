@@ -11,7 +11,7 @@ Core gameplay pillars:
 - Per-weapon bullet spread (accuracy) system
 - Reliable bullets with continuous collision detection
 - Damage ranges + crit system
-- Floating damage numbers with smooth arcing motion and color-coded hit types
+- Floating damage numbers with pop + fade animation and color-coded hit types
 - Enemies with full health logic and damage feedback
 - Endless wave system with difficulty scaling and off-screen spawning
 - Wave-based enemy spawning with kill/remaining tracking
@@ -154,6 +154,20 @@ Current dev focus: **Combat polish + enemy interactions**
   - `is_two_handed` - If true, weapon uses two-handed pose with BackArmSprite (default false)
   - `support_hand_offset_right` / `support_hand_offset_left` - Back arm position offsets for two-handed weapons (default Vector2.ZERO)
   - `bullet_scene` - Bullet scene to spawn
+  - **Bullet Penetration System**:
+    - `penetration_min: int` - Minimum penetration power (default 0)
+    - `penetration_max: int` - Maximum penetration power (default 0)
+    - `penetration_chance: float` - Probability of penetration occurring (range 0.0-1.0, default 1.0)
+    - `penetration_damage_drop_per_pen: float` - Damage reduction per additional enemy penetrated (default 0.10 = 10%)
+  - **Bullet Range**: `max_range: float` - Maximum bullet travel distance (default 300.0)
+  - **Bullet Speed**: `bullet_speed: float` - Bullet movement speed (default 450.0)
+    - Bullet scene has a default speed (500.0), but WeaponBase always overrides it when spawning.
+    - Note: Current weapon tuning in Inspector: AK and Pistol both set `bullet_speed` to 450.0 (these are per-weapon Inspector values, not global defaults).
+  - **Bullet Knockback**:
+    - `bullet_knockback: float` - Base knockback strength (default 0.0, no knockback unless set per weapon)
+    - `knockback_drop_per_pen: float` - Knockback reduction per additional enemy penetrated (default 0.4 = 40%)
+    - `crit_knockback_multiplier: float` - Knockback multiplier on critical hits (default 2.0)
+    - Note: Current weapon tuning in Inspector: AK and Pistol both set `bullet_knockback` to 15.0 (these are per-weapon Inspector values, not code defaults).
 - **Fire Rate System**
   - Internal cooldown timer (`_time_until_next_shot`) managed automatically.
   - `can_fire()` - Returns true if weapon can fire (cooldown expired).
@@ -171,8 +185,12 @@ Current dev focus: **Combat polish + enemy interactions**
     - Crit damage multiplied by `crit_multiplier`
   - Spawning bullets (`Bullet.tscn`) with spread applied
   - Passing damage + crit info to bullets
+  - Setting bullet penetration, range, speed, and knockback properties
   - Emitting `fired` signal for camera shake
   - Playing one-shot gun audio with random pitch
+- **Penetration System**
+  - `roll_penetration_power() -> int`: Rolls random penetration power based on `penetration_min`, `penetration_max`, and `penetration_chance`
+  - Returns 0 if `penetration_max <= 0` or chance roll fails
 
 ### Pistol (`weapon_pistol.gd`)
 - Extends WeaponBase.
@@ -192,24 +210,48 @@ Current dev focus: **Combat polish + enemy interactions**
 - **Continuous Collision Detection (CCD)**
   - Prevents tunnelling at high speeds.
   - Tracks `previous_position` each frame.
-  - Raycast from `previous_position` → `target_pos`:
-    - Includes safety margin.
-    - Uses `hit_from_inside = true`.
-  - If ray hits:
-    - Bullet moves to exact hit point.
-    - Calls `_handle_hit(collider)`.
-    - Frees itself.
+  - Multi-hit penetration raycast loop (up to `MAX_HITS_PER_FRAME` per frame).
+  - Uses `PhysicsRayQueryParameters2D.create()` with `hit_from_inside = true`.
+
+- **Penetration System**
+  - Bullets can hit multiple enemies in a single frame.
+  - `penetration_power: int` - Remaining penetration power (reduced by enemy resistance).
+  - `penetration_damage_drop_per_pen: float` - Cumulative damage reduction per enemy hit (default 0.20).
+  - `_hit_enemy_ids: Dictionary` - Tracks enemies already hit (persists for bullet lifetime, prevents re-damaging).
+  - `_enemies_damaged: int` - Counter for cumulative damage/knockback reduction.
+  - `_resolve_enemy_from_collider(collider)` - Helper to resolve enemy root node from collider.
+  - Bullet continues penetrating if `penetration_power >= 1` after each hit.
+  - Uses RID-based collider exclusion for subsequent raycasts.
+
+- **Range System**
+  - `max_range: float` - Maximum travel distance (default INF, set by weapon).
+  - `_distance_travelled: float` - Tracks cumulative distance traveled.
+  - Bullet frees itself when `_distance_travelled >= max_range`.
+
+- **Speed System**
+  - `speed: float` - Bullet movement speed (set by weapon via `bullet_speed` export).
+  - Bullet scene has a default speed, but WeaponBase always overrides it when spawning.
+  - Movement: `target_pos = current_pos + direction * speed * delta`.
 
 - **Damage & Crit**
-  - Weapon sets:
-    - `bullet.damage = dmg_value`
-    - `bullet.is_crit = is_crit`
-  - `_handle_hit` passes both to enemy:
-    - `enemy.take_damage(damage, is_crit)`
+  - Weapon sets: `bullet.damage` and `bullet.is_crit`.
+  - Damage reduces cumulatively per enemy penetrated:
+    - Formula: `damage_multiplier = pow(1.0 - penetration_damage_drop_per_pen, _enemies_damaged)`
+    - First enemy takes full damage, subsequent enemies take reduced damage.
+  - Always damages the enemy it collides with (cannot skip).
+
+- **Knockback System**
+  - `knockback_strength: float` - Base knockback (set by weapon).
+  - `knockback_drop_per_pen: float` - Cumulative knockback reduction per enemy hit (default 0.20).
+  - `crit_knockback_multiplier: float` - Knockback multiplier on crits (default 1.0, set by weapon).
+  - Knockback calculation:
+    - Apply crit multiplier first: `kb *= crit_knockback_multiplier` (if crit).
+    - Apply penetration reduction: `kb *= pow(1.0 - knockback_drop_per_pen, _enemies_damaged)`.
+  - Applied to enemies via `enemy.apply_knockback(direction, kb)`.
 
 - **Lifetime**
-  - Bullet has a countdown.
-  - Frees itself when finished.
+  - Bullet has a `lifetime` countdown timer.
+  - Frees itself when lifetime expires or max range exceeded.
 
 ---
 
@@ -244,6 +286,24 @@ Current dev focus: **Combat polish + enemy interactions**
 - In ATTACK, enemy continues pressing toward player at reduced speed via `attack_move_multiplier`.
 - Export: `attack_move_multiplier` (default 0.35).
 
+### Penetration Resistance
+- `penetration_resistance: int` - Reduces bullet penetration power on hit (default 1).
+- Bullet's `penetration_power` is reduced by this value after dealing damage.
+
+### Knockback System
+- **Exports**:
+  - `knockback_decay: float` - Knockback decay rate (default 18.0).
+  - `knockback_max_speed: float` - Maximum knockback velocity (default 220.0).
+- **Member**: `knockback_velocity: Vector2` - Current knockback velocity (horizontal only).
+- **Method**: `apply_knockback(dir: Vector2, strength: float) -> void`
+  - Applies horizontal knockback impulse.
+  - If already being knocked back in same direction, reduces impulse by 55% (prevents long skating).
+  - Clamps knockback velocity to `-knockback_max_speed` to `knockback_max_speed`.
+- **Behavior in `_physics_process()`**:
+  - Knockback velocity is blended into horizontal movement: `velocity.x += knockback_velocity.x`.
+  - Decay: `knockback_velocity.x = move_toward(knockback_velocity.x, 0.0, knockback_decay * 3.5 * delta)`.
+  - Snaps to zero if `abs(knockback_velocity.x) < 2.0` (prevents micro-sliding).
+
 ### Health
 - `max_health` exported (default 100).
 - `current_health` initialized in `_ready()`.
@@ -277,15 +337,7 @@ Current dev focus: **Combat polish + enemy interactions**
   - Normal hits: white
   - Crit hits: yellow
   - Killing blows: red `Color(1.0, 0.201, 0.059, 1.0)` (priority over crit)
-- **Arc System**:
-  - Random left/right arc direction for normal hits.
-  - Crit/killing blows: arc opposite to enemy movement direction.
-  - Dynamic arc distance: boosted when arc goes WITH enemy movement (compensates for enemy running away).
-- **Rotation System**:
-  - Rotation only applied when arc direction is OPPOSITE to enemy movement.
-  - If arc goes same direction as movement, rotation is 0.
-  - Rotation range: 10°–30° based on `min_rot_deg` and `max_rot_deg`.
-- Passes `damage`, `is_crit`, `is_killing_blow`, and `movement_dir_sign` to damage number.
+- Passes `damage`, `is_crit`, and `is_killing_blow` to damage number.
 
 ### Contact Damage (State-Based)
 - `contact_damage` exported (default 10).
@@ -408,36 +460,29 @@ Current dev focus: **Combat polish + enemy interactions**
 ---
 
 ## Damage Number System (`damage_number.gd`)
-- Shows floating numbers above enemy.
+- Shows floating numbers above enemy with pop + fade animation.
 - **Exports**
-  - `damage` (int)
-  - `is_crit` (bool)
-  - `lifetime` (~0.3)
-  - `float_distance`, `arc_distance`
-  - `arc_boost_factor` (default 1.4, user set to 5.0)
-  - `min_rot_deg`, `max_rot_deg` (rotation range)
-  - `normal_color`, `crit_color`, `kill_color`
+  - `damage` (int) - Damage value to display
+  - `is_crit` (bool) - Whether this is a critical hit
+  - `normal_color` - Color for normal hits (default white)
+  - `crit_color` - Color for crit hits (default yellow `Color(1.0, 1.0, 0.2)`)
+  - `kill_color` - Color for killing blows (default red `Color(1.0, 0.201, 0.059, 1.0)`)
 - **Visual**
-  - Normal: white, default size.
-  - Crit: yellow, 1.5x scale.
-  - Killing blow: red `Color(1.0, 0.201, 0.059, 1.0)`, 1.5x scale.
-- **Motion**
-  - Parametric arc:
-    - `t` animates from 0 → 0.6
-    - Horizontal drift based on `arc_distance` (dynamically adjusted).
-    - Vertical curve using `sin(t * PI)`.
-  - Arc direction:
-    - Normal hits: random left/right.
-    - Crit/killing blows: opposite to enemy movement.
-  - Dynamic arc distance:
-    - Base `arc_distance` when arc goes opposite to movement.
-    - `arc_distance * arc_boost_factor` when arc goes with movement.
-- **Rotation**
-  - Only applied when arc direction is OPPOSITE to enemy movement.
-  - Rotation range: `min_rot_deg` to `max_rot_deg`.
-  - If arc goes same direction as movement, rotation is 0.
-- Alpha fades to 0.
-- Auto frees when tween ends.
+  - Normal: white, default size (final scale 1.0).
+  - Crit: yellow, larger size (final scale 2.0).
+  - Killing blow: red, larger size (final scale 2.0).
+- **Animation (Pop + Fade)**
+  - **Constants**: `HOLD_TIME = 0.22`, `FADE_TIME = 0.14`, `TOTAL_TIME = 0.36`.
+  - **Initial Setup**:
+    - Random offset: `Vector2(randf_range(-5.0, 5.0), randf_range(-3.0, 3.0))`.
+    - Initial scale: `0.7` (normal), `1.05` (crit/kill with 1.5x base multiplier).
+  - **Scale Animation (Pop)**:
+    - Scales up to `final_scale * 1.15` over 0.08s (TRANS_BACK, EASE_OUT).
+    - Eases back to `final_scale` over 0.10s (delayed 0.08s).
+    - `final_scale`: `1.0` (normal), `2.0` (crit/kill).
+  - **Upward Drift**: Moves upward `-8.0` pixels over `TOTAL_TIME`.
+  - **Fade**: Alpha stays at `1.0` during `HOLD_TIME`, then fades to `0.0` over `FADE_TIME`.
+  - **Cleanup**: Node freed after `TOTAL_TIME` interval.
 
 ---
 
@@ -672,7 +717,6 @@ Current dev focus: **Combat polish + enemy interactions**
 - Limited weapon variety — only Pistol and Assault Rifle implemented.
 - No reload, ammo UI.
 - Enemy pathfinding is simple horizontal chase.
-- No knockback for player or enemies yet.
 - Player invulnerability visual feedback not yet implemented.
 - Save/load system not yet implemented (currencies, XP, stash, and loadout are session-only).
 - Loadout items not yet applied to player during runs (equipment system pending).

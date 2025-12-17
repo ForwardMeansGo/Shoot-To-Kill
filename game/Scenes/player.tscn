@@ -341,13 +341,9 @@ z_index = 2
 collision_layer = 2
 collision_mask = 5
 script = ExtResource("1_cvnsp")
-max_health = null
-invulnerability_time = null
-starting_gold = null
 primary_weapon_scene = ExtResource("5_8erm5")
 secondary_weapon_scene = ExtResource("3_8erm5")
 kick_strength = 3.0
-kick_return_speed = null
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
 position = Vector2(0, 5)
@@ -379,7 +375,7 @@ position = Vector2(-11, 6)
 texture = ExtResource("8_f1ek2")
 
 [node name="Camera2D" type="Camera2D" parent="."]
-zoom = Vector2(4, 4)
+zoom = Vector2(2.5, 2.5)
 process_callback = 0
 position_smoothing_enabled = true
 script = ExtResource("3_6t5aa")

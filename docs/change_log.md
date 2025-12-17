@@ -4,6 +4,89 @@ This file tracks significant documentation updates and corrections.
 
 ---
 
+## 2025-01-XX — Documentation Cleanup: Removed Arc System and _handle_hit() References
+
+### Summary
+Documentation cleanup to remove outdated references to damage number arc motion system and bullet `_handle_hit()` method, while adding clarifications for bullet speed and knockback defaults.
+
+### Updates Made
+- **Arc System Removal**: Removed all mentions of parametric arc motion, arc direction logic, rotation system, and `movement_dir_sign` usage from damage number documentation
+- **_handle_hit() Removal**: Removed references to `_handle_hit()` method describing current bullet behavior (bullet system now uses direct damage/knockback application in penetration loop)
+- **Bullet Speed Clarification**: Added explicit note that bullet scene has a default speed (500.0), but WeaponBase always overrides it when spawning; clarified that current weapon tuning values (AK/Pistol = 450.0) are per-weapon Inspector values, not global defaults
+- **Knockback Defaults Clarification**: Updated documentation to reflect that `bullet_knockback` code default is 0.0 (no knockback unless set per weapon), while current weapon tuning (AK/Pistol = 15.0) is documented as per-weapon Inspector values, not code defaults
+
+### Files Updated
+- `project_index.md`: Removed arc system and rotation system subsections from Damage Numbers; removed `movement_dir_sign` from properties passed list; added bullet speed clarification; corrected knockback default documentation
+- `gameplay_systems.md`: Added bullet speed clarification; corrected knockback default documentation
+- `scripts_copy.md`: Verified scripts match live code (movement_dir_sign still passed in enemy.gd code but unused by damage_number.gd)
+- `todos.md`: Already updated (no changes needed)
+- `change_log.md`: This entry
+
+### Notes
+- Damage numbers now exclusively use pop + fade animation (no arc motion)
+- Bullet system uses direct damage/knockback application in penetration loop (no `_handle_hit()` helper)
+- Code defaults (0.0 for knockback, 500.0 for bullet speed) are clearly separated from per-weapon Inspector tuning values
+
+---
+
+## 2025-01-XX — Major Documentation Synchronization: Bullet Penetration, Knockback, and Damage Number Animation
+
+### Summary
+Complete documentation update to reflect major combat system implementations: multi-hit bullet penetration system, per-weapon bullet range/speed/knockback, enemy penetration resistance and knockback, and damage number pop + fade animation (replacing arc motion).
+
+### Major Systems Added/Updated
+
+#### Bullet System
+- **Multi-Hit Penetration**: Complete rewrite to document multi-hit penetration raycast loop system
+- **Penetration Mechanics**: `penetration_power`, `penetration_damage_drop_per_pen`, `_hit_enemy_ids` tracking, `_enemies_damaged` counter
+- **Range System**: `max_range` and `_distance_travelled` for range-based bullet termination
+- **Speed System**: `speed` variable for per-weapon bullet velocity control
+- **Knockback System**: `knockback_strength`, `knockback_drop_per_pen`, `crit_knockback_multiplier` with cumulative reduction
+- **Helper Function**: `_resolve_enemy_from_collider()` for correct enemy root node resolution
+- Removed outdated single-hit `_handle_hit()` system documentation
+
+#### Damage Number System
+- **Animation Change**: Complete rewrite from parametric arc motion to pop + fade animation
+- **New Constants**: `HOLD_TIME = 0.22`, `FADE_TIME = 0.14`, `TOTAL_TIME = 0.36`
+- **Scale Animation**: Pop effect (scale up to 1.15x, ease back to final scale)
+- **Fade Animation**: Alpha stays at 1.0 during hold, then fades over fade time
+- **Upward Drift**: Simple upward movement over total time
+- Removed arc motion, rotation, and `movement_dir_sign` documentation
+
+#### Weapon System
+- **New Exports**: `penetration_min`, `penetration_max`, `penetration_chance`, `penetration_damage_drop_per_pen`
+- **New Exports**: `max_range`, `bullet_speed`
+- **New Exports**: `bullet_knockback`, `knockback_drop_per_pen`, `crit_knockback_multiplier`
+- **New Method**: `roll_penetration_power() -> int`
+- **Updated**: `spawn_bullet()` now sets all penetration, range, speed, and knockback properties
+
+#### Enemy System
+- **New Export**: `penetration_resistance: int` (default 1)
+- **New Exports**: `knockback_decay: float` (default 18.0), `knockback_max_speed: float` (default 220.0)
+- **New Member**: `knockback_velocity: Vector2`
+- **New Method**: `apply_knockback(dir: Vector2, strength: float) -> void`
+- **New Behavior**: Knockback application and decay in `_physics_process()` (snappy, low-ice system)
+
+### Files Updated
+- `project_index.md`: Complete rewrites for Bullet System and Damage Number System sections; added weapon exports, enemy knockback section; updated core gameplay pillars; removed incorrect "No knockback" limitation
+- `gameplay_systems.md`: Complete rewrites for Bullet System and Damage Number System sections; added weapon exports, enemy knockback section
+- `scripts_copy.md`: Replaced `bullet.gd` script copy (197 lines with multi-hit penetration); replaced `damage_number.gd` script copy (69 lines with pop+fade); updated `weapon_base.gd` script copy (added new exports and method); updated summary sections
+- `todos.md`: Updated damage number description from "arc animation" to "pop + fade animation"; added note that enemy knockback is implemented
+
+### Outdated Information Corrected
+- Bullet system documentation (was describing single-hit system, now reflects multi-hit penetration)
+- Damage number documentation (was describing arc motion, now reflects pop+fade animation)
+- Weapon system exports (added 9 missing exports and 1 missing method)
+- Enemy system (added penetration resistance and complete knockback system)
+- Known Limitations (removed incorrect "No knockback" statement)
+
+### Notes
+- All code in scripts_copy.md now matches live repository 1:1
+- Default values aligned to live code (e.g., `max_range = 300.0`, `bullet_speed = 450.0`, `knockback_drop_per_pen = 0.4`)
+- Terminology made consistent across all files (penetration, pop+fade, knockback)
+
+---
+
 ## 2025-12-16 — Docs Resync: Approved Facts Only
 
 ### Summary

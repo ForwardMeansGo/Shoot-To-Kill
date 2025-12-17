@@ -18,6 +18,10 @@ hand_offset_left = Vector2(11, 2)
 is_two_handed = true
 support_hand_offset_right = Vector2(-8, -1)
 support_hand_offset_left = Vector2(-8, -4)
+penetration_min = 1
+penetration_max = 4
+penetration_damage_drop_per_pen = 0.2
+max_range = 325.0
 
 [node name="Muzzle" type="Marker2D" parent="."]
 position = Vector2(14, 0)

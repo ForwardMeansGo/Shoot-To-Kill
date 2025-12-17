@@ -4,11 +4,11 @@
 - [x] Player health system
 - [x] Enemy contact damage
 - [ ] Enemy melee attack
-- [ ] Player invulnerability frames + knockback on hit
+- [ ] Player invulnerability frames + knockback on hit (Note: Enemy knockback is implemented)
 - [ ] Player death / respawn flow
 
 ## Combat Feel / Juice
-- [x] Damage numbers with arc animation
+- [x] Damage numbers with pop + fade animation
 - [x] Critical hit styling (bigger, yellow)
 - [x] Weapon recoil / gun kickback
 - [ ] Muzzle flashes

@@ -23,6 +23,9 @@ signal died
 @export var separation_max_push: float = 70.0
 @export var separation_max_neighbors: int = 6
 @export var separation_min_dist_px: float = 1.0
+@export var penetration_resistance: int = 1
+@export var knockback_decay: float = 18.0
+@export var knockback_max_speed: float = 220.0
 
 enum State {
 	CHASE,
@@ -47,6 +50,7 @@ var flash_material: ShaderMaterial
 var current_health: int
 var contact_timer: float = 0.0
 var damage_bar_tween: Tween
+var knockback_velocity: Vector2 = Vector2.ZERO
 
 func _ready() -> void:
 	current_health = max_health
@@ -121,6 +125,22 @@ func _physics_process(delta: float) -> void:
 				facing_left = should_face_left
 				sprite.flip_h = facing_left
 
+	# --- Knockback (snappy, low-ice) ---
+	# Apply knockback as a short-lived horizontal impulse blended into velocity.
+	# The multiplier makes recovery faster without needing new exports.
+	velocity.x += knockback_velocity.x
+
+	# Stronger decay so knockback stops quickly (prevents "ice sliding").
+	knockback_velocity.x = move_toward(
+		knockback_velocity.x,
+		0.0,
+		knockback_decay * 3.5 * delta
+	)
+
+	# If knockback is tiny, snap to zero to stop micro-sliding.
+	if abs(knockback_velocity.x) < 2.0:
+		knockback_velocity.x = 0.0
+
 	move_and_slide()
 
 func _apply_separation(delta: float) -> void:
@@ -182,6 +202,24 @@ func _apply_separation(delta: float) -> void:
 
 func set_player(p: Node2D) -> void:
 	player = p
+
+func apply_knockback(dir: Vector2, strength: float) -> void:
+	if strength <= 0.0:
+		return
+	var d := dir
+	if d == Vector2.ZERO:
+		return
+	d = d.normalized()
+
+	# Horizontal knockback only
+	var impulse := d.x * strength
+
+	# If we're already being knocked back in the same direction, add less (prevents long skating).
+	if sign(knockback_velocity.x) == sign(impulse):
+		impulse *= 0.55
+
+	knockback_velocity.x += impulse
+	knockback_velocity.x = clamp(knockback_velocity.x, -knockback_max_speed, knockback_max_speed)
 
 func take_damage(amount: int, is_crit: bool = false) -> void:
 	if state == State.DEAD:
